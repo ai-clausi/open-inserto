@@ -1,0 +1,1 @@
+"""Open Inserto application package."""
