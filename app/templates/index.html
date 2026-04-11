@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} – MVP{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">MVP scaffold</p>
+  <h1>{{ app_name }}</h1>
+  <p>
+    FastAPI läuft, server-rendered Templates sind eingebunden und die SQLite-Basis
+    wurde vorbereitet.
+  </p>
+</section>
+
+<section class="card-grid">
+  <article class="card">
+    <h2>Konfiguration</h2>
+    <ul>
+      <li><strong>eBay-Modus:</strong> {{ ebay_mode }}</li>
+      <li><strong>Datenbank:</strong> {{ database_url }}</li>
+    </ul>
+  </article>
+
+  <article class="card">
+    <h2>Nächste Ausbaustufen</h2>
+    <ul>
+      <li>Bild-Upload</li>
+      <li>Draft-Datenmodell</li>
+      <li>eBay-Draft-Workflow</li>
+    </ul>
+  </article>
+</section>
+{% endblock %}
