@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} – Upload{% endblock %}
+
+{% block content %}
+<section class="upload-shell">
+  <div class="hero hero--compact">
+    <p class="eyebrow">MVP Upload Flow</p>
+    <h1>Bilder hochladen</h1>
+    <p>
+      Lade mehrere Bilder hoch, ergänze optionale Infos und starte damit einen neuen Draft.
+      Die Bilder werden lokal gespeichert und für den weiteren Workflow normalisiert.
+    </p>
+  </div>
+
+  {% if errors %}
+    <div class="alert alert--error">
+      <strong>Upload fehlgeschlagen.</strong>
+      <ul>
+        {% for error in errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form class="upload-layout" method="post" action="/drafts/upload" enctype="multipart/form-data">
+    <section class="panel upload-dropzone" data-dropzone>
+      <div>
+        <p class="eyebrow">Bilder</p>
+        <h2>Mehrfach-Upload mit Vorschau</h2>
+        <p>Unterstützt: JPG, PNG, WEBP, HEIC/HEIF, GIF, BMP und TIFF.</p>
+      </div>
+
+      <label class="upload-picker">
+        <input type="file" name="images" accept="image/*,.heic,.heif" multiple required data-image-input>
+        <span>Dateien auswählen</span>
+      </label>
+
+      <div class="upload-help">
+        <span>Mindestens 1 Bild</span>
+        <span>Maximal 20 Bilder</span>
+        <span>Mindestens 500 px auf der längsten Seite</span>
+      </div>
+
+      <div class="preview-grid" data-preview-grid>
+        <p class="empty-state">Noch keine Bilder ausgewählt.</p>
+      </div>
+    </section>
+
+    <section class="panel form-panel">
+      <div>
+        <p class="eyebrow">Zusatzinfos</p>
+        <h2>Kontext für den Draft</h2>
+      </div>
+
+      <label class="field field--full">
+        <span>Notizen</span>
+        <textarea name="notes" rows="5" placeholder="Zustand, Auffälligkeiten, Fundort, Preisidee ...">{{ form_values.notes or '' }}</textarea>
+      </label>
+
+      <div class="field-grid">
+        {% for field_name, field_label in extra_fields %}
+          <label class="field">
+            <span>{{ field_label }}</span>
+            <input type="text" name="{{ field_name }}" value="{{ form_values[field_name] if field_name in form_values else '' }}" placeholder="{{ field_label }}">
+          </label>
+        {% endfor %}
+      </div>
+
+      <button class="button button--primary" type="submit">Draft erstellen</button>
+    </section>
+  </form>
+</section>
+
+<script>
+  const input = document.querySelector('[data-image-input]');
+  const previewGrid = document.querySelector('[data-preview-grid]');
+  const dropzone = document.querySelector('[data-dropzone]');
+
+  const renderPreviews = () => {
+    const files = Array.from(input.files || []);
+    if (!files.length) {
+      previewGrid.innerHTML = '<p class="empty-state">Noch keine Bilder ausgewählt.</p>';
+      return;
+    }
+
+    previewGrid.innerHTML = '';
+    files.forEach((file, index) => {
+      const item = document.createElement('article');
+      item.className = 'preview-card';
+
+      const title = document.createElement('strong');
+      title.textContent = `${index + 1}. ${file.name}`;
+      item.appendChild(title);
+
+      const meta = document.createElement('span');
+      meta.className = 'preview-meta';
+      meta.textContent = `${Math.round(file.size / 1024)} KB · ${file.type || 'unbekannt'}`;
+      item.appendChild(meta);
+
+      if (file.type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.alt = file.name;
+        img.loading = 'lazy';
+        img.src = URL.createObjectURL(file);
+        item.appendChild(img);
+      }
+
+      previewGrid.appendChild(item);
+    });
+  };
+
+  input?.addEventListener('change', renderPreviews);
+
+  ['dragenter', 'dragover'].forEach((eventName) => {
+    dropzone?.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      dropzone.classList.add('is-dragover');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach((eventName) => {
+    dropzone?.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      dropzone.classList.remove('is-dragover');
+    });
+  });
+
+  dropzone?.addEventListener('drop', (event) => {
+    const files = event.dataTransfer?.files;
+    if (!files?.length) return;
+    input.files = files;
+    renderPreviews();
+  });
+</script>
+{% endblock %}
