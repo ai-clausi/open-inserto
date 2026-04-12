@@ -150,6 +150,20 @@
         </ul>
       </article>
 
+      <article class="card">
+        <h3>Gerendertes Listing-HTML</h3>
+        <p class="section-copy">Das HTML wird serverseitig aus den aktuellen Draft-Daten erzeugt und hier direkt als Vorschau angezeigt.</p>
+        {% if draft.listing.description_html %}
+          <div class="prose-preview">{{ draft.listing.description_html | safe }}</div>
+          <details>
+            <summary>HTML-Quelltext anzeigen</summary>
+            <pre><code>{{ draft.listing.description_html }}</code></pre>
+          </details>
+        {% else %}
+          <p>Noch kein gerendertes HTML vorhanden.</p>
+        {% endif %}
+      </article>
+
       <article class="card action-card">
         <h3>Aktionen</h3>
         <p>„Änderungen speichern“ hält den Draft im Review-Flow. „Nutzer-Review abschließen“ setzt den Draft bei ausreichender Freigabe auf <code>ready_for_marketplace</code>.</p>

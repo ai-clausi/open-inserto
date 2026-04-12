@@ -1,42 +1,53 @@
-<p><strong>{% if manufacturer %}{{ manufacturer }} {% endif %}{{ product_name or 'Unbenannter Artikel' }}</strong></p>
-{% if subtitle %}
-<p>{{ subtitle }}</p>
+<p><strong>Wichtiger Hinweis:</strong></p>
+<p>
+  Es handelt sich um einen Privatverkauf, Gewährleistung und Rücknahme sind ausgeschlossen.
+  Der Verkauf findet daher unter Ausschluss jeglicher Sachmängelhaftung statt.
+  Der Käufer trägt den Kaufpreis und die Versandkosten.
+</p>
+
+{% if manufacturer %}
+<p><strong>Hersteller:</strong><br>{{ manufacturer }}</p>
 {% endif %}
 
-{% if condition or model or purchase_date or product_identifier_value %}
-<ul>
-  {% if condition %}
-  <li><strong>Zustand:</strong> {{ condition }}</li>
-  {% endif %}
-  {% if model %}
-  <li><strong>Modell:</strong> {{ model }}</li>
-  {% endif %}
-  {% if purchase_date %}
-  <li><strong>Kaufdatum:</strong> {{ purchase_date }}</li>
-  {% endif %}
-  {% if product_identifier_value %}
-  <li><strong>{{ product_identifier_type or 'Produktkennung' }}:</strong> {{ product_identifier_value }}</li>
-  {% endif %}
-</ul>
+<p><strong>Produkt:</strong><br>{{ product_name or 'Unbenannter Artikel' }}</p>
+
+{% if model %}
+<p><strong>Modell:</strong><br>{{ model }}</p>
+{% endif %}
+
+{% if subtitle %}
+<p><strong>Untertitel:</strong><br>{{ subtitle }}</p>
+{% endif %}
+
+{% if product_identifier_value %}
+<p><strong>{{ product_identifier_type or 'Modell-Nummer' }}:</strong><br>{{ product_identifier_value }}</p>
+{% endif %}
+
+{% if purchase_date %}
+<p><strong>Kaufdatum:</strong><br>{{ purchase_date }}</p>
+{% endif %}
+
+{% if condition %}
+<p><strong>Zustand:</strong><br>{{ condition }}</p>
 {% endif %}
 
 {% if description_html %}
 <div>
-  <strong>Beschreibung:</strong>
+  <p><strong>Beschreibung:</strong></p>
   {{ description_html }}
 </div>
 {% endif %}
 
 {% if included_items_html %}
 <div>
-  <strong>Lieferumfang:</strong>
+  <p><strong>Lieferumfang:</strong></p>
   {{ included_items_html }}
 </div>
 {% endif %}
 
 {% if issues_html %}
 <div>
-  <strong>Hinweise:</strong>
+  <p><strong>Hinweise:</strong></p>
   {{ issues_html }}
 </div>
 {% endif %}

@@ -44,10 +44,12 @@ def build_draft() -> Draft:
 def test_render_listing_description_includes_expected_sections():
     html = render_listing_description(build_draft())
 
-    assert "<strong>Nintendo Switch OLED</strong>" in html
-    assert "<strong>Zustand:</strong> gebraucht" in html
-    assert "<strong>Kaufdatum:</strong> 2024-12-24" in html
-    assert "<strong>Produktkennung:</strong> 1234567890" in html
+    assert "<strong>Wichtiger Hinweis:</strong>" in html
+    assert "<strong>Hersteller:</strong><br>Nintendo" in html
+    assert "<strong>Produkt:</strong><br>Switch OLED" in html
+    assert "<strong>Zustand:</strong><br>gebraucht" in html
+    assert "<strong>Kaufdatum:</strong><br>2024-12-24" in html
+    assert "<strong>Modell-Nummer:</strong><br>1234567890" in html
     assert "<strong>Lieferumfang:</strong>" in html
     assert "<li>Dock</li>" in html
     assert "<li>Netzteil</li>" in html
@@ -67,7 +69,7 @@ def test_render_listing_description_omits_empty_optional_blocks():
 
     html = render_listing_description(draft)
 
-    assert "<strong>Switch OLED</strong>" in html
+    assert "<strong>Produkt:</strong><br>Switch OLED" in html
     assert "Kaufdatum" not in html
     assert "Produktkennung" not in html
     assert "Lieferumfang" not in html
@@ -94,7 +96,7 @@ def test_analysis_service_populates_rendered_description_html():
 
     analysis = service.analyze(draft)
 
-    assert "<strong>Switch OLED</strong>" in analysis.listing.description_html
+    assert "<strong>Produkt:</strong><br>Switch OLED" in analysis.listing.description_html
     assert "<strong>Lieferumfang:</strong>" in analysis.listing.description_html
     assert "MVP-Heuristik" not in analysis.listing.description_html
 
@@ -117,8 +119,9 @@ def test_review_updates_rendered_description_html_from_current_draft_state():
         action="confirm",
     )
 
-    assert "<strong>Valve Steam Deck</strong>" in draft.listing.description_html
-    assert "<strong>Modell:</strong> OLED" in draft.listing.description_html
+    assert "<strong>Hersteller:</strong><br>Valve" in draft.listing.description_html
+    assert "<strong>Produkt:</strong><br>Steam Deck" in draft.listing.description_html
+    assert "<strong>Modell:</strong><br>OLED" in draft.listing.description_html
     assert "<p>Portable Konsole</p>" in draft.listing.description_html
     assert "<li>Case</li>" in draft.listing.description_html
     assert "<li>Ladegerät</li>" in draft.listing.description_html
