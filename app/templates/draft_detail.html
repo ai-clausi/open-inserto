@@ -12,12 +12,12 @@
 <section class="card-grid detail-grid">
   <article class="card">
     <h2>Review-Zusammenfassung</h2>
-    <ul>
-      <li><strong>Workflow:</strong> {{ draft.workflow.status }}</li>
-      <li><strong>Review-Status:</strong> {{ review_state }}</li>
-      <li><strong>Review nötig:</strong> {{ 'Ja' if draft.workflow.needs_review else 'Nein' }}</li>
-      <li><strong>Bilder:</strong> {{ draft.source.images | length }}</li>
-    </ul>
+    <div class="status-list">
+      <div class="status-item"><span>Workflow</span><strong>{{ draft.workflow.status }}</strong></div>
+      <div class="status-item"><span>Review-Status</span><strong>{{ review_state }}</strong></div>
+      <div class="status-item"><span>Review nötig</span><strong>{{ 'Ja' if draft.workflow.needs_review else 'Nein' }}</strong></div>
+      <div class="status-item"><span>Bilder</span><strong>{{ draft.source.images | length }}</strong></div>
+    </div>
 
     {% if missing_core_fields %}
       <h3>Fehlende Kernfelder</h3>
@@ -55,52 +55,86 @@
   </article>
 </section>
 
-<section class="panel">
-  <div>
-    <p class="eyebrow">Prüfen, korrigieren, bestätigen</p>
-    <h2>Review- und Validierungsmaske</h2>
-    <p>Bearbeite die Kernfelder, markiere bewusst bestätigte Lücken und speichere oder schließe die Nutzer-Review ab.</p>
+<section class="panel review-panel">
+  <div class="review-panel__header">
+    <div>
+      <p class="eyebrow">Prüfen, korrigieren, bestätigen</p>
+      <h2>Review- und Validierungsmaske</h2>
+      <p>Bearbeite die Kernfelder, ergänze sinnvolle optionale Angaben und bestätige nur bewusst leere Pflichtfelder.</p>
+    </div>
+    <div class="review-panel__hint">
+      <strong>Hinweis</strong>
+      <p><span class="field-badge field-badge--required">Pflicht / sinnvoll</span> sollte möglichst gesetzt werden. <span class="field-badge field-badge--optional">Optional</span> ergänzt nur bei Mehrwert.</p>
+    </div>
   </div>
 
-  <form method="post" action="/drafts/{{ draft.id }}/review" class="stack-lg">
-    <section class="card-grid detail-grid">
+  <form method="post" action="/drafts/{{ draft.id }}/review" class="stack-lg review-form">
+    <section class="card-grid detail-grid review-columns">
       <article class="card">
         <h3>Kernfelder</h3>
+        <p class="section-copy">Diese Angaben treiben den eigentlichen Listing-Entwurf. Fehlende Werte bitte ergänzen oder bewusst leer bestätigen.</p>
 
-        <label for="title"><strong>{{ core_fields['title'] }}</strong></label>
-        <input id="title" name="title" type="text" value="{{ draft.listing.title }}">
-        <label><input type="checkbox" name="confirm_fields" value="title" {% if 'title' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Feld bewusst bestätigt</label>
+        <label class="field field--full" for="title">
+          <span>{{ core_fields['title'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
+          <input id="title" name="title" type="text" value="{{ draft.listing.title }}" placeholder="z. B. Nintendo Switch OLED">
+        </label>
+        {% if not draft.listing.title.strip() %}
+          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="title" {% if 'title' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
+        {% endif %}
 
-        <label for="condition"><strong>{{ core_fields['condition'] }}</strong></label>
-        <input id="condition" name="condition" type="text" value="{{ draft.listing.condition }}">
-        <label><input type="checkbox" name="confirm_fields" value="condition" {% if 'condition' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Feld bewusst bestätigt</label>
+        <label class="field field--full" for="condition">
+          <span>{{ core_fields['condition'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
+          <input id="condition" name="condition" type="text" value="{{ draft.listing.condition }}" placeholder="z. B. gebraucht, sehr gut">
+        </label>
+        {% if not draft.listing.condition.strip() %}
+          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="condition" {% if 'condition' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
+        {% endif %}
 
-        <label for="description"><strong>{{ core_fields['description_html'] }}</strong></label>
-        <textarea id="description" name="description" rows="6">{{ draft.source.notes }}</textarea>
-        <label><input type="checkbox" name="confirm_fields" value="description_html" {% if 'description_html' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Feld bewusst bestätigt</label>
+        <label class="field field--full" for="description">
+          <span>{{ core_fields['description_html'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
+          <textarea id="description" name="description" rows="6" placeholder="Kurz, klar, was ist es und in welchem Zustand?">{{ draft.source.notes }}</textarea>
+        </label>
+        {% if not draft.source.notes.strip() %}
+          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="description_html" {% if 'description_html' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
+        {% endif %}
 
-        <label for="included_items"><strong>{{ core_fields['included_items'] }}</strong></label>
-        <textarea id="included_items" name="included_items" rows="4">{{ draft.source.user_input.get('accessories', '') }}</textarea>
-        <label><input type="checkbox" name="confirm_fields" value="included_items" {% if 'included_items' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Feld bewusst bestätigt</label>
+        <label class="field field--full" for="included_items">
+          <span>{{ core_fields['included_items'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
+          <textarea id="included_items" name="included_items" rows="4" placeholder="Je Zeile oder kommagetrennt, z. B. Dock, Netzteil, OVP">{{ draft.source.user_input.get('accessories', '') }}</textarea>
+        </label>
+        {% if not draft.listing.included_items %}
+          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="included_items" {% if 'included_items' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
+        {% endif %}
       </article>
 
       <article class="card">
-        <h3>Optionale Felder</h3>
+        <h3>Ergänzende Angaben</h3>
+        <p class="section-copy">Optional, aber oft nützlich für bessere Qualität und weniger Nacharbeit.</p>
 
-        <label for="brand"><strong>{{ optional_fields['brand'] }}</strong></label>
-        <input id="brand" name="brand" type="text" value="{{ draft.listing.brand }}">
+        <label class="field field--full" for="brand">
+          <span>{{ optional_fields['brand'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <input id="brand" name="brand" type="text" value="{{ draft.listing.brand }}" placeholder="z. B. Nintendo">
+        </label>
 
-        <label for="model"><strong>{{ optional_fields['model'] }}</strong></label>
-        <input id="model" name="model" type="text" value="{{ draft.listing.model }}">
+        <label class="field field--full" for="model">
+          <span>{{ optional_fields['model'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <input id="model" name="model" type="text" value="{{ draft.listing.model }}" placeholder="z. B. OLED 64 GB">
+        </label>
 
-        <label for="subtitle"><strong>{{ optional_fields['subtitle'] }}</strong></label>
-        <input id="subtitle" name="subtitle" type="text" value="{{ draft.listing.subtitle }}">
+        <label class="field field--full" for="subtitle">
+          <span>{{ optional_fields['subtitle'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <input id="subtitle" name="subtitle" type="text" value="{{ draft.listing.subtitle }}" placeholder="Kurze Zusatzinfo für das Listing">
+        </label>
 
-        <label for="category_suggestion"><strong>{{ optional_fields['category_suggestion'] }}</strong></label>
-        <input id="category_suggestion" name="category_suggestion" type="text" value="{{ draft.listing.category_suggestion }}">
+        <label class="field field--full" for="category_suggestion">
+          <span>{{ optional_fields['category_suggestion'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <input id="category_suggestion" name="category_suggestion" type="text" value="{{ draft.listing.category_suggestion }}" placeholder="z. B. Konsolen">
+        </label>
 
-        <label for="hints"><strong>Hinweise / offene Punkte</strong></label>
-        <textarea id="hints" name="hints" rows="5">{{ draft.source.user_input.get('hints', '') }}</textarea>
+        <label class="field field--full" for="hints">
+          <span>Hinweise / offene Punkte <span class="field-badge field-badge--optional">Optional</span></span>
+          <textarea id="hints" name="hints" rows="5" placeholder="z. B. leichte Kratzer, Seriennummer verdeckt">{{ draft.source.user_input.get('hints', '') }}</textarea>
+        </label>
       </article>
     </section>
 
@@ -116,11 +150,13 @@
         </ul>
       </article>
 
-      <article class="card">
+      <article class="card action-card">
         <h3>Aktionen</h3>
-        <p>"Änderungen speichern" hält den Draft im Review-Flow. "Nutzer-Review abschließen" setzt den Draft bei ausreichender Freigabe auf <code>ready_for_marketplace</code>.</p>
-        <button type="submit" name="action" value="save">Änderungen speichern</button>
-        <button type="submit" name="action" value="confirm">Nutzer-Review abschließen</button>
+        <p>„Änderungen speichern“ hält den Draft im Review-Flow. „Nutzer-Review abschließen“ setzt den Draft bei ausreichender Freigabe auf <code>ready_for_marketplace</code>.</p>
+        <div class="button-row">
+          <button class="button button--secondary" type="submit" name="action" value="save">Änderungen speichern</button>
+          <button class="button button--primary" type="submit" name="action" value="confirm">Nutzer-Review abschließen</button>
+        </div>
       </article>
     </section>
   </form>

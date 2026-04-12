@@ -176,6 +176,14 @@ code {
   padding: 0.9rem 1rem;
   font: inherit;
   background: white;
+  color: var(--text);
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.16);
+  outline-offset: 1px;
+  border-color: rgba(37, 99, 235, 0.55);
 }
 
 .field textarea {
@@ -190,6 +198,7 @@ code {
   border: 0;
   border-radius: 16px;
   padding: 0.95rem 1.15rem;
+  min-height: 3.25rem;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
@@ -200,6 +209,12 @@ code {
   background: var(--primary);
   color: white;
   margin-top: 1.2rem;
+}
+
+.button--secondary {
+  background: var(--surface-muted);
+  color: var(--text);
+  border: 1px solid rgba(117, 132, 168, 0.18);
 }
 
 .alert {
@@ -223,8 +238,101 @@ code {
   margin-top: 1.5rem;
 }
 
+.status-list {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-bottom: 1rem;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem;
+  border-radius: 18px;
+  background: var(--surface-muted);
+}
+
+.status-item span,
+.section-copy,
+.confirm-field,
+.review-panel__hint p {
+  color: var(--text-soft);
+}
+
+.review-panel {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.review-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.review-panel__hint {
+  max-width: 360px;
+  padding: 0.95rem 1rem;
+  border-radius: 20px;
+  background: var(--surface-muted);
+}
+
+.review-form,
+.action-card,
+.button-row {
+  display: grid;
+  gap: 1rem;
+}
+
+.field-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.field-badge--required {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--primary);
+}
+
+.field-badge--optional {
+  background: rgba(23, 32, 51, 0.08);
+  color: var(--text-soft);
+}
+
+.confirm-field {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: -0.2rem 0 0.85rem;
+  font-size: 0.95rem;
+}
+
+.confirm-field input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.button-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.button-row .button {
+  width: 100%;
+  margin-top: 0;
+}
+
 @media (max-width: 900px) {
-  .upload-layout {
+  .upload-layout,
+  .button-row {
     grid-template-columns: 1fr;
   }
 }
