@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} – Draft {{ draft.id }}{% endblock %}
+
+{% block content %}
+<section class="hero hero--compact">
+  <p class="eyebrow">Draft erstellt</p>
+  <h1>{{ draft.id }}</h1>
+  <p>SKU: <strong>{{ draft.sku }}</strong></p>
+</section>
+
+<section class="card-grid detail-grid">
+  <article class="card">
+    <h2>Status</h2>
+    <ul>
+      <li><strong>Workflow:</strong> {{ draft.workflow.status }}</li>
+      <li><strong>Review nötig:</strong> {{ 'Ja' if draft.workflow.needs_review else 'Nein' }}</li>
+      <li><strong>Bilder:</strong> {{ draft.source.images | length }}</li>
+    </ul>
+  </article>
+
+  <article class="card">
+    <h2>Zusatzinfos</h2>
+    {% if draft.source.notes %}
+      <p><strong>Notizen:</strong><br>{{ draft.source.notes }}</p>
+    {% else %}
+      <p>Keine Notizen hinterlegt.</p>
+    {% endif %}
+
+    {% if draft.source.user_input %}
+      <ul>
+        {% for key, value in draft.source.user_input.items() %}
+          <li><strong>{{ key }}:</strong> {{ value }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </article>
+</section>
+
+<section class="panel image-list-panel">
+  <div>
+    <p class="eyebrow">Gespeicherte Bilder</p>
+    <h2>Normalisierte Arbeitskopien</h2>
+  </div>
+
+  <div class="preview-grid">
+    {% for image in draft.source.images %}
+      <article class="preview-card">
+        <img src="/{{ image.storage_path }}" alt="{{ image.original_filename }}">
+        <strong>{{ image.order }}. {{ image.original_filename }}</strong>
+        <span class="preview-meta">{{ image.mime_type }} · {{ image.kind }}</span>
+        <code>{{ image.storage_path }}</code>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

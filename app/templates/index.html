@@ -4,12 +4,16 @@
 
 {% block content %}
 <section class="hero">
-  <p class="eyebrow">MVP scaffold</p>
+  <p class="eyebrow">MVP Upload Flow</p>
   <h1>{{ app_name }}</h1>
   <p>
-    FastAPI läuft, server-rendered Templates sind eingebunden und die SQLite-Basis
-    wurde vorbereitet.
+    Der aktuelle Stand deckt den Draft-Upload bereits end-to-end ab: Bilder hochladen,
+    lokal speichern, normalisieren und als neuen Draft vorbereiten.
   </p>
+
+  <div class="hero-actions">
+    <a class="button button--primary" href="/drafts/upload">Zum Upload</a>
+  </div>
 </section>
 
 <section class="card-grid">
@@ -22,11 +26,11 @@
   </article>
 
   <article class="card">
-    <h2>Nächste Ausbaustufen</h2>
+    <h2>Bereits umgesetzt</h2>
     <ul>
-      <li>Bild-Upload</li>
-      <li>Draft-Datenmodell</li>
-      <li>eBay-Draft-Workflow</li>
+      <li>Mehrfach-Bildupload mit Vorschau</li>
+      <li>Lokale Bildspeicherung und Format-Normalisierung</li>
+      <li>Erzeugung eines neuen Drafts aus den Upload-Daten</li>
     </ul>
   </article>
 </section>
