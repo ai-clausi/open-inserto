@@ -17,4 +17,6 @@ def test_index_page_renders():
 
     assert response.status_code == 200
     assert "Open Inserto" in response.text
-    assert "MVP scaffold" in response.text
+    assert "MVP Upload Flow" in response.text
+    assert "Zum Upload" in response.text
+    assert 'href="/drafts/upload"' in response.text
