@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from html import escape
 from typing import Protocol
 
 from app.drafts.models import Draft, ListingData, WorkflowStatus
+from app.drafts.rendering import render_listing_description
 
 
 @dataclass(slots=True)
@@ -60,15 +60,7 @@ class HeuristicDraftAnalysisService:
             condition=condition,
             includedItems=accessories,
             issues=issues,
-            descriptionHtml=_build_description_html(
-                product_name=product_name,
-                condition=condition,
-                accessories=accessories,
-                notes=notes,
-                issues=issues,
-                missing_information=missing_information,
-                confidence_notes=confidence_notes,
-            ),
+            descriptionHtml="",
         )
 
         if not draft.source.images or (not product_name and not notes):
@@ -77,6 +69,10 @@ class HeuristicDraftAnalysisService:
             workflow_status = WorkflowStatus.NEEDS_ATTENTION
         else:
             workflow_status = WorkflowStatus.READY_FOR_REVIEW
+
+        rendered_draft = draft.model_copy(deep=True)
+        rendered_draft.listing = listing.model_copy(deep=True)
+        listing.description_html = render_listing_description(rendered_draft)
 
         return DraftAnalysisResult(
             listing=listing,
@@ -131,54 +127,3 @@ def _collect_issues(*values: object) -> list[str]:
             issues.append(item)
     return issues
 
-
-def _build_description_html(
-    *,
-    product_name: str,
-    condition: str,
-    accessories: list[str],
-    notes: str,
-    issues: list[str],
-    missing_information: list[str],
-    confidence_notes: list[str],
-) -> str:
-    sections: list[str] = []
-
-    title = product_name or "Unbenannter Artikel"
-    sections.append(f"<p><strong>{escape(title)}</strong></p>")
-
-    details: list[str] = []
-    if condition:
-        details.append(f"<li><strong>Zustand:</strong> {escape(condition)}</li>")
-    if accessories:
-        details.append(
-            "<li><strong>Zubehör:</strong> " + ", ".join(escape(item) for item in accessories) + "</li>"
-        )
-    if details:
-        sections.append("<ul>" + "".join(details) + "</ul>")
-
-    if notes:
-        sections.append(f"<p><strong>Notizen:</strong> {escape(notes)}</p>")
-
-    if issues:
-        sections.append(
-            "<p><strong>Hinweise / offene Punkte:</strong></p><ul>"
-            + "".join(f"<li>{escape(item)}</li>" for item in issues)
-            + "</ul>"
-        )
-
-    if missing_information:
-        sections.append(
-            "<p><strong>Fehlende Informationen:</strong></p><ul>"
-            + "".join(f"<li>{escape(item)}</li>" for item in missing_information)
-            + "</ul>"
-        )
-
-    if confidence_notes:
-        sections.append(
-            "<p><strong>Unsicherheiten:</strong></p><ul>"
-            + "".join(f"<li>{escape(item)}</li>" for item in confidence_notes)
-            + "</ul>"
-        )
-
-    return "".join(sections)

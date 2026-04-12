@@ -1,0 +1,42 @@
+<p><strong>{% if manufacturer %}{{ manufacturer }} {% endif %}{{ product_name or 'Unbenannter Artikel' }}</strong></p>
+{% if subtitle %}
+<p>{{ subtitle }}</p>
+{% endif %}
+
+{% if condition or model or purchase_date or product_identifier_value %}
+<ul>
+  {% if condition %}
+  <li><strong>Zustand:</strong> {{ condition }}</li>
+  {% endif %}
+  {% if model %}
+  <li><strong>Modell:</strong> {{ model }}</li>
+  {% endif %}
+  {% if purchase_date %}
+  <li><strong>Kaufdatum:</strong> {{ purchase_date }}</li>
+  {% endif %}
+  {% if product_identifier_value %}
+  <li><strong>{{ product_identifier_type or 'Produktkennung' }}:</strong> {{ product_identifier_value }}</li>
+  {% endif %}
+</ul>
+{% endif %}
+
+{% if description_html %}
+<div>
+  <strong>Beschreibung:</strong>
+  {{ description_html }}
+</div>
+{% endif %}
+
+{% if included_items_html %}
+<div>
+  <strong>Lieferumfang:</strong>
+  {{ included_items_html }}
+</div>
+{% endif %}
+
+{% if issues_html %}
+<div>
+  <strong>Hinweise:</strong>
+  {{ issues_html }}
+</div>
+{% endif %}
