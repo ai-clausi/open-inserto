@@ -66,7 +66,8 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
     assert "Netzteil" in detail.text
     assert "Seriennummer verdeckt" in detail.text
     assert "Gerendertes Listing-HTML" in detail.text
-    assert "Das HTML wird serverseitig aus den aktuellen Draft-Daten erzeugt" in detail.text
+    assert "Das HTML wird serverseitig aus den aktuellen Draft-Daten erzeugt, im Draft gespeichert" in detail.text
+    assert "Beim Speichern oder Bestätigen wird derselbe gerenderte Stand erneut persistiert" in detail.text
     assert "Wichtiger Hinweis:" in detail.text
     assert "MVP-Heuristik" in detail.text
     assert "front.jpg" in detail.text
