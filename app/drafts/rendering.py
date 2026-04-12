@@ -75,5 +75,5 @@ def _render_list_html(items: list[str]) -> Markup:
     if not items:
         return Markup("")
 
-    html = "<ul>" + "".join(f"<li>{escape(item)}</li>" for item in items) + "</ul>"
+    html = "".join(f"<p>{escape(item)}</p>" for item in items)
     return Markup(html)

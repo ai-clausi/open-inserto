@@ -5,49 +5,64 @@
   Der Käufer trägt den Kaufpreis und die Versandkosten.
 </p>
 
+{% macro spacer() -%}
+<p>&nbsp;</p>
+{%- endmacro %}
+
 {% if manufacturer %}
-<p><strong>Hersteller:</strong><br>{{ manufacturer }}</p>
+{{ spacer() }}
+<p><strong>Hersteller:</strong></p>
+<p>{{ manufacturer }}</p>
 {% endif %}
 
-<p><strong>Produkt:</strong><br>{{ product_name or 'Unbenannter Artikel' }}</p>
+{{ spacer() }}
+<p><strong>Produkt:</strong></p>
+<p>{{ product_name or 'Unbenannter Artikel' }}</p>
 
 {% if model %}
-<p><strong>Modell:</strong><br>{{ model }}</p>
+{{ spacer() }}
+<p><strong>Modell:</strong></p>
+<p>{{ model }}</p>
 {% endif %}
 
 {% if subtitle %}
-<p><strong>Untertitel:</strong><br>{{ subtitle }}</p>
+{{ spacer() }}
+<p><strong>Untertitel:</strong></p>
+<p>{{ subtitle }}</p>
 {% endif %}
 
 {% if product_identifier_value %}
-<p><strong>{{ product_identifier_type or 'Modell-Nummer' }}:</strong><br>{{ product_identifier_value }}</p>
+{{ spacer() }}
+<p><strong>{{ product_identifier_type or 'Modell-Nummer' }}:</strong></p>
+<p>{{ product_identifier_value }}</p>
 {% endif %}
 
 {% if purchase_date %}
-<p><strong>Kaufdatum:</strong><br>{{ purchase_date }}</p>
+{{ spacer() }}
+<p><strong>Kaufdatum:</strong></p>
+<p>{{ purchase_date }}</p>
 {% endif %}
 
 {% if condition %}
-<p><strong>Zustand:</strong><br>{{ condition }}</p>
+{{ spacer() }}
+<p><strong>Zustand:</strong></p>
+<p>{{ condition }}</p>
 {% endif %}
 
 {% if description_html %}
-<div>
-  <p><strong>Beschreibung:</strong></p>
-  {{ description_html }}
-</div>
+{{ spacer() }}
+<p><strong>Beschreibung:</strong></p>
+{{ description_html }}
 {% endif %}
 
 {% if included_items_html %}
-<div>
-  <p><strong>Lieferumfang:</strong></p>
-  {{ included_items_html }}
-</div>
+{{ spacer() }}
+<p><strong>Lieferumfang:</strong></p>
+{{ included_items_html }}
 {% endif %}
 
 {% if issues_html %}
-<div>
-  <p><strong>Hinweise:</strong></p>
-  {{ issues_html }}
-</div>
+{{ spacer() }}
+<p><strong>Hinweise:</strong></p>
+{{ issues_html }}
 {% endif %}
