@@ -11,26 +11,79 @@
 
 <section class="card-grid detail-grid">
   <article class="card">
-    <h2>Status</h2>
+    <h2>Übersicht</h2>
     <ul>
       <li><strong>Workflow:</strong> {{ draft.workflow.status }}</li>
       <li><strong>Review nötig:</strong> {{ 'Ja' if draft.workflow.needs_review else 'Nein' }}</li>
       <li><strong>Bilder:</strong> {{ draft.source.images | length }}</li>
     </ul>
+
+    {% if draft.workflow.missing_information %}
+      <h3>Vor Review noch offen</h3>
+      <ul>
+        {% for item in draft.workflow.missing_information %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Aktuell fehlen keine Pflichtangaben aus den vorhandenen Eingaben.</p>
+    {% endif %}
   </article>
 
   <article class="card">
-    <h2>Zusatzinfos</h2>
+    <h2>Deine Angaben</h2>
+    <ul>
+      <li><strong>Produktname:</strong> {{ draft.source.user_input.get('product_name') or '–' }}</li>
+      <li><strong>Zustand:</strong> {{ draft.source.user_input.get('condition') or '–' }}</li>
+      <li><strong>Zubehör:</strong> {{ draft.source.user_input.get('accessories') or '–' }}</li>
+      <li><strong>Hinweise:</strong> {{ draft.source.user_input.get('hints') or '–' }}</li>
+    </ul>
+
     {% if draft.source.notes %}
-      <p><strong>Notizen:</strong><br>{{ draft.source.notes }}</p>
+      <p><strong>Freitext-Notizen:</strong><br>{{ draft.source.notes }}</p>
     {% else %}
-      <p>Keine Notizen hinterlegt.</p>
+      <p>Keine zusätzlichen Notizen hinterlegt.</p>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h2>Systemvorschlag</h2>
+    <p>Das System leitet daraus einen ersten Entwurf ab. Das ist nur ein Vorschlag zur Prüfung.</p>
+
+    <ul>
+      <li><strong>Titel:</strong> {{ draft.listing.title or '–' }}</li>
+      <li><strong>Zustand:</strong> {{ draft.listing.condition or '–' }}</li>
+      <li><strong>Kategorie:</strong> {{ draft.listing.category_suggestion or '–' }}</li>
+    </ul>
+
+    <h3>Erkanntes Zubehör</h3>
+    {% if draft.listing.included_items %}
+      <ul>
+        {% for item in draft.listing.included_items %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Kein Zubehör vorgeschlagen.</p>
     {% endif %}
 
-    {% if draft.source.user_input %}
+    <h3>Erkannte Hinweise</h3>
+    {% if draft.listing.issues %}
       <ul>
-        {% for key, value in draft.source.user_input.items() %}
-          <li><strong>{{ key }}:</strong> {{ value }}</li>
+        {% for item in draft.listing.issues %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Keine Hinweise erkannt.</p>
+    {% endif %}
+
+    {% set confidence_notes = draft.listing.attributes.get('confidenceNotes', []) %}
+    {% if confidence_notes %}
+      <h3>Unsicherheiten des Vorschlags</h3>
+      <ul>
+        {% for item in confidence_notes %}
+          <li>{{ item }}</li>
         {% endfor %}
       </ul>
     {% endif %}

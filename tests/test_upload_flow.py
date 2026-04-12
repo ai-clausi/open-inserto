@@ -59,8 +59,15 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
 
     detail = client.get(location)
     assert detail.status_code == 200
+    assert "Deine Angaben" in detail.text
+    assert "Systemvorschlag" in detail.text
+    assert "Freitext-Notizen" in detail.text
     assert "Leichte Gebrauchsspuren" in detail.text
     assert "Testgerät" in detail.text
+    assert "classified" in detail.text
+    assert "Netzteil" in detail.text
+    assert "Seriennummer verdeckt" in detail.text
+    assert "MVP-Heuristik" in detail.text
     assert "front.jpg" in detail.text
     assert "back.png" in detail.text
 
