@@ -5,6 +5,15 @@ from fastapi.templating import Jinja2Templates
 from app.core.config import get_settings
 from app.drafts.analysis import HeuristicDraftAnalysisService, apply_analysis_result
 from app.drafts.repository import DraftRepository
+from app.drafts.review import (
+    CORE_FIELDS,
+    OPTIONAL_FIELDS,
+    evaluate_review_state,
+    get_confidence_notes,
+    get_missing_core_fields,
+    get_review_metadata,
+    update_draft_from_review,
+)
 from app.drafts.upload_service import DraftUploadService, UploadAsset, UploadValidationError
 
 router = APIRouter()
@@ -123,5 +132,54 @@ def draft_detail(request: Request, draft_id: str):
     return templates.TemplateResponse(
         request,
         "draft_detail.html",
-        build_context(request, draft=draft),
+        build_context(
+            request,
+            draft=draft,
+            review_state=evaluate_review_state(draft),
+            missing_core_fields=get_missing_core_fields(draft),
+            confidence_notes=get_confidence_notes(draft),
+            review_metadata=get_review_metadata(draft),
+            core_fields=CORE_FIELDS,
+            optional_fields=OPTIONAL_FIELDS,
+        ),
     )
+
+
+@router.post("/drafts/{draft_id}/review", response_class=HTMLResponse)
+async def draft_review_submit(
+    request: Request,
+    draft_id: str,
+    title: str = Form(default=""),
+    condition: str = Form(default=""),
+    description: str = Form(default=""),
+    included_items: str = Form(default=""),
+    brand: str = Form(default=""),
+    model: str = Form(default=""),
+    subtitle: str = Form(default=""),
+    category_suggestion: str = Form(default=""),
+    hints: str = Form(default=""),
+    confirm_fields: list[str] = Form(default_factory=list),
+    action: str = Form(default="save"),
+):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    update_draft_from_review(
+        draft,
+        title=title,
+        condition=condition,
+        description=description,
+        included_items=included_items,
+        brand=brand,
+        model=model,
+        subtitle=subtitle,
+        category_suggestion=category_suggestion,
+        hints=hints,
+        confirm_fields=confirm_fields,
+        action=action,
+    )
+    repository.save_draft(draft)
+    return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
