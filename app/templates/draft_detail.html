@@ -138,7 +138,7 @@
       </article>
     </section>
 
-    <section class="card-grid detail-grid">
+    <section class="card-grid detail-grid draft-detail-grid">
       <article class="card">
         <h3>Aktueller Systemvorschlag</h3>
         <ul>
@@ -155,10 +155,10 @@
         <p class="section-copy">Das HTML wird serverseitig aus den aktuellen Draft-Daten erzeugt, im Draft gespeichert und hier direkt als Vorschau angezeigt.</p>
         <p class="section-copy">So ist direkt sichtbar, wie die eBay-Beschreibung aktuell aussieht. Beim Speichern oder Bestätigen wird derselbe gerenderte Stand erneut persistiert.</p>
         {% if draft.listing.description_html %}
-          <div class="prose-preview">{{ draft.listing.description_html | safe }}</div>
+          <div class="prose-preview prose-preview--listing">{{ draft.listing.description_html | safe }}</div>
           <details>
             <summary>HTML-Quelltext anzeigen</summary>
-            <pre><code>{{ draft.listing.description_html }}</code></pre>
+            <pre class="code-block"><code>{{ draft.listing.description_html }}</code></pre>
           </details>
         {% else %}
           <p>Noch kein gerendertes HTML vorhanden.</p>

@@ -5,19 +5,27 @@
   Der Käufer trägt den Kaufpreis und die Versandkosten.
 </p>
 
-{% macro spacer() -%}
+{% macro spacer(count=1) -%}
+{% for _ in range(count) -%}
 <p>&nbsp;</p>
+{% endfor -%}
 {%- endmacro %}
 
-{% if manufacturer %}
 {{ spacer() }}
+{% if manufacturer %}
 <p><strong>Hersteller:</strong></p>
 <p>{{ manufacturer }}</p>
+{{ spacer() }}
 {% endif %}
 
-{{ spacer() }}
 <p><strong>Produkt:</strong></p>
 <p>{{ product_name or 'Unbenannter Artikel' }}</p>
+
+{% if product_identifier_value %}
+{{ spacer() }}
+<p><strong>{{ product_identifier_type or 'Modell-Nummer' }}:</strong></p>
+<p>{{ product_identifier_value }}</p>
+{% endif %}
 
 {% if model %}
 {{ spacer() }}
@@ -31,12 +39,6 @@
 <p>{{ subtitle }}</p>
 {% endif %}
 
-{% if product_identifier_value %}
-{{ spacer() }}
-<p><strong>{{ product_identifier_type or 'Modell-Nummer' }}:</strong></p>
-<p>{{ product_identifier_value }}</p>
-{% endif %}
-
 {% if purchase_date %}
 {{ spacer() }}
 <p><strong>Kaufdatum:</strong></p>
@@ -44,25 +46,25 @@
 {% endif %}
 
 {% if condition %}
-{{ spacer() }}
+{{ spacer(2) }}
 <p><strong>Zustand:</strong></p>
 <p>{{ condition }}</p>
 {% endif %}
 
 {% if description_html %}
-{{ spacer() }}
+{{ spacer(2) }}
 <p><strong>Beschreibung:</strong></p>
 {{ description_html }}
 {% endif %}
 
 {% if included_items_html %}
-{{ spacer() }}
+{{ spacer(2) }}
 <p><strong>Lieferumfang:</strong></p>
 {{ included_items_html }}
 {% endif %}
 
 {% if issues_html %}
-{{ spacer() }}
+{{ spacer(2) }}
 <p><strong>Hinweise:</strong></p>
 {{ issues_html }}
 {% endif %}
