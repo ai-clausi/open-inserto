@@ -147,7 +147,8 @@ def test_review_post_persists_changes_and_final_confirmation(client: TestClient)
     assert "Lampe aus Metall" in updated_detail.text
     assert "Desk 2000" in updated_detail.text
     assert "Schreibtischlampe" in updated_detail.text
-    assert "Hersteller:&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;NoName" in updated_detail.text
+    assert "Hersteller:&lt;/b&gt;" in updated_detail.text
+    assert "NoName" in updated_detail.text
 
 
 def test_review_save_with_missing_core_fields_stays_in_needs_attention(client: TestClient):

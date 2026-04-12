@@ -1,70 +1,71 @@
-<p><strong>Wichtiger Hinweis:</strong></p>
-<p>
+{% macro row_html(label, value_html) -%}
+<tr>
+  <td style="padding: 3px; vertical-align: top; width: 180px;">
+    <p><b>{{ label }}</b></p>
+  </td>
+  <td style="padding: 3px; vertical-align: top;">
+    {{ value_html | safe }}
+  </td>
+</tr>
+{%- endmacro %}
+
+{% macro spacer_row() -%}
+<tr>
+  <td style="padding: 3px; vertical-align: top;"><p>&nbsp;</p></td>
+  <td style="padding: 3px; vertical-align: top;"><p>&nbsp;</p></td>
+</tr>
+{%- endmacro %}
+
+<font rwr="1" size="4" style="font-family: Arial;">
+  <b>Wichtiger Hinweis:</b><br>
   Es handelt sich um einen Privatverkauf, Gewährleistung und Rücknahme sind ausgeschlossen.
   Der Verkauf findet daher unter Ausschluss jeglicher Sachmängelhaftung statt.
   Der Käufer trägt den Kaufpreis und die Versandkosten.
-</p>
+  <br>
+  <br>
+  <table>
+    <tbody>
+      {% if manufacturer %}
+      {{ row_html('Hersteller:', manufacturer) }}
+      {% endif %}
 
-{% macro spacer(count=1) -%}
-{% for _ in range(count) -%}
-<p>&nbsp;</p>
-{% endfor -%}
-{%- endmacro %}
+      {{ row_html('Produkt:', product_name) }}
 
-{{ spacer() }}
-{% if manufacturer %}
-<p><strong>Hersteller:</strong></p>
-<p>{{ manufacturer }}</p>
-{{ spacer() }}
-{% endif %}
+      {% if product_identifier_value %}
+      {{ row_html((product_identifier_type or 'Modell-Nummer') ~ ':', product_identifier_value) }}
+      {% endif %}
 
-<p><strong>Produkt:</strong></p>
-<p>{{ product_name or 'Unbenannter Artikel' }}</p>
+      {% if model %}
+      {{ row_html('Modell:', model) }}
+      {% endif %}
 
-{% if product_identifier_value %}
-{{ spacer() }}
-<p><strong>{{ product_identifier_type or 'Modell-Nummer' }}:</strong></p>
-<p>{{ product_identifier_value }}</p>
-{% endif %}
+      {% if subtitle %}
+      {{ row_html('Untertitel:', subtitle) }}
+      {% endif %}
 
-{% if model %}
-{{ spacer() }}
-<p><strong>Modell:</strong></p>
-<p>{{ model }}</p>
-{% endif %}
+      {% if purchase_date %}
+      {{ row_html('Kaufdatum:', purchase_date) }}
+      {% endif %}
 
-{% if subtitle %}
-{{ spacer() }}
-<p><strong>Untertitel:</strong></p>
-<p>{{ subtitle }}</p>
-{% endif %}
+      {% if condition %}
+      {{ spacer_row() }}
+      {{ row_html('Zustand:', condition) }}
+      {% endif %}
 
-{% if purchase_date %}
-{{ spacer() }}
-<p><strong>Kaufdatum:</strong></p>
-<p>{{ purchase_date }}</p>
-{% endif %}
+      {% if description_html %}
+      {{ spacer_row() }}
+      {{ row_html('Beschreibung:', description_html) }}
+      {% endif %}
 
-{% if condition %}
-{{ spacer(2) }}
-<p><strong>Zustand:</strong></p>
-<p>{{ condition }}</p>
-{% endif %}
+      {% if included_items_html %}
+      {{ spacer_row() }}
+      {{ row_html('Lieferumfang:', included_items_html) }}
+      {% endif %}
 
-{% if description_html %}
-{{ spacer(2) }}
-<p><strong>Beschreibung:</strong></p>
-{{ description_html }}
-{% endif %}
-
-{% if included_items_html %}
-{{ spacer(2) }}
-<p><strong>Lieferumfang:</strong></p>
-{{ included_items_html }}
-{% endif %}
-
-{% if issues_html %}
-{{ spacer(2) }}
-<p><strong>Hinweise:</strong></p>
-{{ issues_html }}
-{% endif %}
+      {% if issues_html %}
+      {{ spacer_row() }}
+      {{ row_html('Hinweise:', issues_html) }}
+      {% endif %}
+    </tbody>
+  </table>
+</font>

@@ -33,14 +33,14 @@ def build_listing_render_context(draft: Draft) -> dict[str, Any]:
     issues = [item.strip() for item in draft.listing.issues if isinstance(item, str) and item.strip()]
 
     return {
-        "manufacturer": draft.listing.brand.strip(),
-        "product_name": draft.listing.title.strip(),
-        "subtitle": draft.listing.subtitle.strip(),
-        "condition": draft.listing.condition.strip(),
-        "model": draft.listing.model.strip(),
-        "purchase_date": _string_attribute(attributes, "purchase_date"),
+        "manufacturer": _render_text_paragraph(draft.listing.brand.strip()),
+        "product_name": _render_text_paragraph(draft.listing.title.strip() or "Unbenannter Artikel"),
+        "subtitle": _render_text_paragraph(draft.listing.subtitle.strip()),
+        "condition": _render_text_paragraph(draft.listing.condition.strip()),
+        "model": _render_text_paragraph(draft.listing.model.strip()),
+        "purchase_date": _render_text_paragraph(_string_attribute(attributes, "purchase_date")),
         "product_identifier_type": _string_attribute(attributes, "product_identifier_type"),
-        "product_identifier_value": _string_attribute(attributes, "product_identifier_value"),
+        "product_identifier_value": _render_text_paragraph(_string_attribute(attributes, "product_identifier_value")),
         "description_html": _render_description_html(draft.source.notes),
         "included_items_html": _render_list_html(included_items),
         "issues_html": _render_list_html(issues),
@@ -69,6 +69,13 @@ def _render_description_html(value: object) -> Markup:
         for segment in cleaned
     )
     return Markup(html)
+
+
+def _render_text_paragraph(value: object) -> Markup:
+    text = value.strip() if isinstance(value, str) else ""
+    if not text:
+        return Markup("")
+    return Markup(f"<p>{escape(text)}</p>")
 
 
 def _render_list_html(items: list[str]) -> Markup:
