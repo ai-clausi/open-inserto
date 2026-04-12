@@ -61,6 +61,10 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
     assert detail.status_code == 200
     assert "Leichte Gebrauchsspuren" in detail.text
     assert "Testgerät" in detail.text
+    assert "classified" in detail.text
+    assert "Netzteil" in detail.text
+    assert "Seriennummer verdeckt" in detail.text
+    assert "MVP-Heuristik" in detail.text
     assert "front.jpg" in detail.text
     assert "back.png" in detail.text
 

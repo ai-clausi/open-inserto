@@ -17,6 +17,15 @@
       <li><strong>Review nötig:</strong> {{ 'Ja' if draft.workflow.needs_review else 'Nein' }}</li>
       <li><strong>Bilder:</strong> {{ draft.source.images | length }}</li>
     </ul>
+
+    {% if draft.workflow.missing_information %}
+      <h3>Fehlende Informationen</h3>
+      <ul>
+        {% for item in draft.workflow.missing_information %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
   </article>
 
   <article class="card">
@@ -33,6 +42,52 @@
           <li><strong>{{ key }}:</strong> {{ value }}</li>
         {% endfor %}
       </ul>
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h2>Analyse-Vorschlag</h2>
+    <ul>
+      <li><strong>Titel:</strong> {{ draft.listing.title or '–' }}</li>
+      <li><strong>Zustand:</strong> {{ draft.listing.condition or '–' }}</li>
+      <li><strong>Kategorie:</strong> {{ draft.listing.category_suggestion or '–' }}</li>
+    </ul>
+
+    <p><strong>Zubehör:</strong></p>
+    {% if draft.listing.included_items %}
+      <ul>
+        {% for item in draft.listing.included_items %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Kein Zubehör vorgeschlagen.</p>
+    {% endif %}
+
+    <p><strong>Hinweise:</strong></p>
+    {% if draft.listing.issues %}
+      <ul>
+        {% for item in draft.listing.issues %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>Keine Hinweise erkannt.</p>
+    {% endif %}
+
+    {% set confidence_notes = draft.listing.attributes.get('confidenceNotes', []) %}
+    {% if confidence_notes %}
+      <p><strong>Unsicherheiten:</strong></p>
+      <ul>
+        {% for item in confidence_notes %}
+          <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if draft.listing.description_html %}
+      <p><strong>Beschreibung:</strong></p>
+      <div>{{ draft.listing.description_html | safe }}</div>
     {% endif %}
   </article>
 </section>

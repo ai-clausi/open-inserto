@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import get_settings
+from app.drafts.analysis import HeuristicDraftAnalysisService, apply_analysis_result
 from app.drafts.repository import DraftRepository
 from app.drafts.upload_service import DraftUploadService, UploadAsset, UploadValidationError
 
@@ -68,6 +69,7 @@ async def upload_draft(
     settings = get_settings()
     repository = DraftRepository(settings.database_path)
     service = DraftUploadService(settings.data_dir)
+    analysis_service = HeuristicDraftAnalysisService()
     form_values = {
         "notes": notes,
         "product_name": product_name,
@@ -93,6 +95,8 @@ async def upload_draft(
                 "hints": hints,
             },
         )
+        analysis = analysis_service.analyze(result.draft)
+        apply_analysis_result(result.draft, analysis)
     except UploadValidationError as exc:
         return templates.TemplateResponse(
             request,
