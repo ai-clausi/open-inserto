@@ -59,12 +59,10 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
 
     detail = client.get(location)
     assert detail.status_code == 200
-    assert "Deine Angaben" in detail.text
-    assert "Systemvorschlag" in detail.text
-    assert "Freitext-Notizen" in detail.text
+    assert "Review- und Validierungsmaske" in detail.text
     assert "Leichte Gebrauchsspuren" in detail.text
     assert "Testgerät" in detail.text
-    assert "classified" in detail.text
+    assert "ready_for_review" in detail.text
     assert "Netzteil" in detail.text
     assert "Seriennummer verdeckt" in detail.text
     assert "MVP-Heuristik" in detail.text
@@ -105,3 +103,71 @@ def test_post_upload_rejects_too_small_images(client: TestClient):
 
     assert response.status_code == 400
     assert "mindestens 500px" in response.text
+
+
+def test_review_post_persists_changes_and_final_confirmation(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Kleine Lampe", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    detail = client.get(location)
+    assert "ready_for_review" in detail.text
+
+    review_response = client.post(
+        f"{location}/review",
+        data={
+            "title": "Lampe aus Metall",
+            "condition": "sehr gut",
+            "description": "Metalllampe, voll funktionsfähig",
+            "included_items": "Kabel, Schalter",
+            "brand": "NoName",
+            "model": "Desk 2000",
+            "subtitle": "Schreibtischlampe",
+            "category_suggestion": "Lampen",
+            "hints": "leichte Kratzer",
+            "confirm_fields": ["title", "condition", "description_html", "included_items"],
+            "action": "confirm",
+        },
+        follow_redirects=False,
+    )
+
+    assert review_response.status_code == 303
+
+    updated_detail = client.get(location)
+    assert "ready_for_marketplace" in updated_detail.text
+    assert "Lampe aus Metall" in updated_detail.text
+    assert "Desk 2000" in updated_detail.text
+    assert "Schreibtischlampe" in updated_detail.text
+
+
+def test_review_save_with_missing_core_fields_stays_in_needs_attention(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "", "condition": "", "notes": "", "accessories": ""},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    review_response = client.post(
+        f"{location}/review",
+        data={
+            "title": "",
+            "condition": "",
+            "description": "Nur grob beschrieben",
+            "included_items": "",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+
+    assert review_response.status_code == 303
+    updated_detail = client.get(location)
+    assert "needs_attention" in updated_detail.text
+    assert "Fehlende Kernfelder" in updated_detail.text

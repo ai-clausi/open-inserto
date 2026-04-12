@@ -4,83 +4,34 @@
 
 {% block content %}
 <section class="hero hero--compact">
-  <p class="eyebrow">Draft erstellt</p>
+  <p class="eyebrow">Nutzer-Review</p>
   <h1>{{ draft.id }}</h1>
   <p>SKU: <strong>{{ draft.sku }}</strong></p>
 </section>
 
 <section class="card-grid detail-grid">
   <article class="card">
-    <h2>Übersicht</h2>
-    <ul>
-      <li><strong>Workflow:</strong> {{ draft.workflow.status }}</li>
-      <li><strong>Review nötig:</strong> {{ 'Ja' if draft.workflow.needs_review else 'Nein' }}</li>
-      <li><strong>Bilder:</strong> {{ draft.source.images | length }}</li>
-    </ul>
+    <h2>Review-Zusammenfassung</h2>
+    <div class="status-list">
+      <div class="status-item"><span>Workflow</span><strong>{{ draft.workflow.status }}</strong></div>
+      <div class="status-item"><span>Review-Status</span><strong>{{ review_state }}</strong></div>
+      <div class="status-item"><span>Review nötig</span><strong>{{ 'Ja' if draft.workflow.needs_review else 'Nein' }}</strong></div>
+      <div class="status-item"><span>Bilder</span><strong>{{ draft.source.images | length }}</strong></div>
+    </div>
 
-    {% if draft.workflow.missing_information %}
-      <h3>Vor Review noch offen</h3>
+    {% if missing_core_fields %}
+      <h3>Fehlende Kernfelder</h3>
       <ul>
-        {% for item in draft.workflow.missing_information %}
+        {% for item in missing_core_fields %}
           <li>{{ item }}</li>
         {% endfor %}
       </ul>
     {% else %}
-      <p>Aktuell fehlen keine Pflichtangaben aus den vorhandenen Eingaben.</p>
-    {% endif %}
-  </article>
-
-  <article class="card">
-    <h2>Deine Angaben</h2>
-    <ul>
-      <li><strong>Produktname:</strong> {{ draft.source.user_input.get('product_name') or '–' }}</li>
-      <li><strong>Zustand:</strong> {{ draft.source.user_input.get('condition') or '–' }}</li>
-      <li><strong>Zubehör:</strong> {{ draft.source.user_input.get('accessories') or '–' }}</li>
-      <li><strong>Hinweise:</strong> {{ draft.source.user_input.get('hints') or '–' }}</li>
-    </ul>
-
-    {% if draft.source.notes %}
-      <p><strong>Freitext-Notizen:</strong><br>{{ draft.source.notes }}</p>
-    {% else %}
-      <p>Keine zusätzlichen Notizen hinterlegt.</p>
-    {% endif %}
-  </article>
-
-  <article class="card">
-    <h2>Systemvorschlag</h2>
-    <p>Das System leitet daraus einen ersten Entwurf ab. Das ist nur ein Vorschlag zur Prüfung.</p>
-
-    <ul>
-      <li><strong>Titel:</strong> {{ draft.listing.title or '–' }}</li>
-      <li><strong>Zustand:</strong> {{ draft.listing.condition or '–' }}</li>
-      <li><strong>Kategorie:</strong> {{ draft.listing.category_suggestion or '–' }}</li>
-    </ul>
-
-    <h3>Erkanntes Zubehör</h3>
-    {% if draft.listing.included_items %}
-      <ul>
-        {% for item in draft.listing.included_items %}
-          <li>{{ item }}</li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p>Kein Zubehör vorgeschlagen.</p>
+      <p>Alle Kernfelder sind vorhanden oder wurden bewusst bestätigt.</p>
     {% endif %}
 
-    <h3>Erkannte Hinweise</h3>
-    {% if draft.listing.issues %}
-      <ul>
-        {% for item in draft.listing.issues %}
-          <li>{{ item }}</li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p>Keine Hinweise erkannt.</p>
-    {% endif %}
-
-    {% set confidence_notes = draft.listing.attributes.get('confidenceNotes', []) %}
     {% if confidence_notes %}
-      <h3>Unsicherheiten des Vorschlags</h3>
+      <h3>Unsichere Angaben</h3>
       <ul>
         {% for item in confidence_notes %}
           <li>{{ item }}</li>
@@ -88,23 +39,126 @@
       </ul>
     {% endif %}
   </article>
+
+  <article class="card">
+    <h2>Bildprüfung</h2>
+    <p>Vorhandene normalisierte Arbeitskopien für die manuelle Sichtprüfung.</p>
+    <div class="preview-grid">
+      {% for image in draft.source.images %}
+        <article class="preview-card">
+          <img src="/{{ image.storage_path }}" alt="{{ image.original_filename }}">
+          <strong>{{ image.order }}. {{ image.original_filename }}</strong>
+          <span class="preview-meta">{{ image.mime_type }} · {{ image.kind }}</span>
+        </article>
+      {% endfor %}
+    </div>
+  </article>
 </section>
 
-<section class="panel image-list-panel">
-  <div>
-    <p class="eyebrow">Gespeicherte Bilder</p>
-    <h2>Normalisierte Arbeitskopien</h2>
+<section class="panel review-panel">
+  <div class="review-panel__header">
+    <div>
+      <p class="eyebrow">Prüfen, korrigieren, bestätigen</p>
+      <h2>Review- und Validierungsmaske</h2>
+      <p>Bearbeite die Kernfelder, ergänze sinnvolle optionale Angaben und bestätige nur bewusst leere Pflichtfelder.</p>
+    </div>
+    <div class="review-panel__hint">
+      <strong>Hinweis</strong>
+      <p><span class="field-badge field-badge--required">Pflicht / sinnvoll</span> sollte möglichst gesetzt werden. <span class="field-badge field-badge--optional">Optional</span> ergänzt nur bei Mehrwert.</p>
+    </div>
   </div>
 
-  <div class="preview-grid">
-    {% for image in draft.source.images %}
-      <article class="preview-card">
-        <img src="/{{ image.storage_path }}" alt="{{ image.original_filename }}">
-        <strong>{{ image.order }}. {{ image.original_filename }}</strong>
-        <span class="preview-meta">{{ image.mime_type }} · {{ image.kind }}</span>
-        <code>{{ image.storage_path }}</code>
+  <form method="post" action="/drafts/{{ draft.id }}/review" class="stack-lg review-form">
+    <section class="card-grid detail-grid review-columns">
+      <article class="card">
+        <h3>Kernfelder</h3>
+        <p class="section-copy">Diese Angaben treiben den eigentlichen Listing-Entwurf. Fehlende Werte bitte ergänzen oder bewusst leer bestätigen.</p>
+
+        <label class="field field--full" for="title">
+          <span>{{ core_fields['title'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
+          <input id="title" name="title" type="text" value="{{ draft.listing.title }}" placeholder="z. B. Nintendo Switch OLED">
+        </label>
+        {% if not draft.listing.title.strip() %}
+          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="title" {% if 'title' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
+        {% endif %}
+
+        <label class="field field--full" for="condition">
+          <span>{{ core_fields['condition'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
+          <input id="condition" name="condition" type="text" value="{{ draft.listing.condition }}" placeholder="z. B. gebraucht, sehr gut">
+        </label>
+        {% if not draft.listing.condition.strip() %}
+          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="condition" {% if 'condition' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
+        {% endif %}
+
+        <label class="field field--full" for="description">
+          <span>{{ core_fields['description_html'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
+          <textarea id="description" name="description" rows="6" placeholder="Kurz, klar, was ist es und in welchem Zustand?">{{ draft.source.notes }}</textarea>
+        </label>
+        {% if not draft.source.notes.strip() %}
+          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="description_html" {% if 'description_html' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
+        {% endif %}
+
+        <label class="field field--full" for="included_items">
+          <span>{{ core_fields['included_items'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
+          <textarea id="included_items" name="included_items" rows="4" placeholder="Je Zeile oder kommagetrennt, z. B. Dock, Netzteil, OVP">{{ draft.source.user_input.get('accessories', '') }}</textarea>
+        </label>
+        {% if not draft.listing.included_items %}
+          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="included_items" {% if 'included_items' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
+        {% endif %}
       </article>
-    {% endfor %}
-  </div>
+
+      <article class="card">
+        <h3>Ergänzende Angaben</h3>
+        <p class="section-copy">Optional, aber oft nützlich für bessere Qualität und weniger Nacharbeit.</p>
+
+        <label class="field field--full" for="brand">
+          <span>{{ optional_fields['brand'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <input id="brand" name="brand" type="text" value="{{ draft.listing.brand }}" placeholder="z. B. Nintendo">
+        </label>
+
+        <label class="field field--full" for="model">
+          <span>{{ optional_fields['model'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <input id="model" name="model" type="text" value="{{ draft.listing.model }}" placeholder="z. B. OLED 64 GB">
+        </label>
+
+        <label class="field field--full" for="subtitle">
+          <span>{{ optional_fields['subtitle'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <input id="subtitle" name="subtitle" type="text" value="{{ draft.listing.subtitle }}" placeholder="Kurze Zusatzinfo für das Listing">
+        </label>
+
+        <label class="field field--full" for="category_suggestion">
+          <span>{{ optional_fields['category_suggestion'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <input id="category_suggestion" name="category_suggestion" type="text" value="{{ draft.listing.category_suggestion }}" placeholder="z. B. Konsolen">
+        </label>
+
+        <label class="field field--full" for="hints">
+          <span>Hinweise / offene Punkte <span class="field-badge field-badge--optional">Optional</span></span>
+          <textarea id="hints" name="hints" rows="5" placeholder="z. B. leichte Kratzer, Seriennummer verdeckt">{{ draft.source.user_input.get('hints', '') }}</textarea>
+        </label>
+      </article>
+    </section>
+
+    <section class="card-grid detail-grid">
+      <article class="card">
+        <h3>Aktueller Systemvorschlag</h3>
+        <ul>
+          <li><strong>Titel:</strong> {{ draft.listing.title or '–' }}</li>
+          <li><strong>Zustand:</strong> {{ draft.listing.condition or '–' }}</li>
+          <li><strong>Kategorie:</strong> {{ draft.listing.category_suggestion or '–' }}</li>
+          <li><strong>Marke:</strong> {{ draft.listing.brand or '–' }}</li>
+          <li><strong>Modell:</strong> {{ draft.listing.model or '–' }}</li>
+        </ul>
+      </article>
+
+      <article class="card action-card">
+        <h3>Aktionen</h3>
+        <p>„Änderungen speichern“ hält den Draft im Review-Flow. „Nutzer-Review abschließen“ setzt den Draft bei ausreichender Freigabe auf <code>ready_for_marketplace</code>.</p>
+        <div class="button-row">
+          <button class="button button--secondary" type="submit" name="action" value="save">Änderungen speichern</button>
+          <button class="button button--primary" type="submit" name="action" value="confirm">Nutzer-Review abschließen</button>
+        </div>
+      </article>
+    </section>
+  </form>
 </section>
 {% endblock %}

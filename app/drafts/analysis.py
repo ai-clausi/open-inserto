@@ -71,9 +71,12 @@ class HeuristicDraftAnalysisService:
             ),
         )
 
-        workflow_status = (
-            WorkflowStatus.NEEDS_ATTENTION if missing_information else WorkflowStatus.CLASSIFIED
-        )
+        if not draft.source.images or (not product_name and not notes):
+            workflow_status = WorkflowStatus.BLOCKED
+        elif missing_information:
+            workflow_status = WorkflowStatus.NEEDS_ATTENTION
+        else:
+            workflow_status = WorkflowStatus.READY_FOR_REVIEW
 
         return DraftAnalysisResult(
             listing=listing,

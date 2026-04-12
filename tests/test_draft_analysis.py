@@ -41,7 +41,7 @@ def test_heuristic_analysis_maps_known_fields_into_listing():
     assert analysis.listing.condition == "gebraucht"
     assert analysis.listing.included_items == ["Dock", "Netzteil"]
     assert analysis.listing.issues == ["kleiner Kratzer", "Display funktioniert gut"]
-    assert analysis.workflow_status == WorkflowStatus.CLASSIFIED
+    assert analysis.workflow_status == WorkflowStatus.READY_FOR_REVIEW
     assert analysis.missing_information == []
     assert "MVP-Heuristik" in analysis.confidence_notes[0]
 
@@ -52,7 +52,7 @@ def test_heuristic_analysis_marks_missing_core_information():
 
     analysis = service.analyze(draft)
 
-    assert analysis.workflow_status == WorkflowStatus.NEEDS_ATTENTION
+    assert analysis.workflow_status == WorkflowStatus.BLOCKED
     assert analysis.needs_review is True
     assert "Produktname unklar" in analysis.missing_information
     assert "Zustand fehlt" in analysis.missing_information
