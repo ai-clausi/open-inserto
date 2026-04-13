@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from app.core.config import get_settings
 from app.drafts.analysis import HeuristicDraftAnalysisService, apply_analysis_result
 from app.drafts.repository import DraftRepository
+from app.drafts.models import WorkflowStatus
 from app.drafts.review import (
     CORE_FIELDS,
     OPTIONAL_FIELDS,
@@ -16,6 +17,7 @@ from app.drafts.review import (
 )
 from app.drafts.upload_service import DraftUploadService, UploadAsset, UploadValidationError
 from app.marketplaces.ebay.service import EbayMarketplaceService
+from app.marketplaces.ebay.validation import collect_marketplace_readiness_errors
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -130,6 +132,12 @@ def draft_detail(request: Request, draft_id: str):
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
 
+    marketplace_readiness_errors = collect_marketplace_readiness_errors(
+        draft,
+        settings,
+        include_workflow_status=False,
+    )
+
     return templates.TemplateResponse(
         request,
         "draft_detail.html",
@@ -140,6 +148,11 @@ def draft_detail(request: Request, draft_id: str):
             missing_core_fields=get_missing_core_fields(draft),
             confidence_notes=get_confidence_notes(draft),
             review_metadata=get_review_metadata(draft),
+            marketplace_readiness_errors=marketplace_readiness_errors,
+            ebay_action_disabled=(
+                draft.workflow.status is not WorkflowStatus.READY_FOR_MARKETPLACE
+                or bool(marketplace_readiness_errors)
+            ),
             core_fields=CORE_FIELDS,
             optional_fields=OPTIONAL_FIELDS,
         ),

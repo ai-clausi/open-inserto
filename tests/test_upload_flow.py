@@ -135,7 +135,7 @@ def test_review_post_persists_changes_and_final_confirmation(client: TestClient)
             "category_suggestion": "Lampen",
             "hints": "leichte Kratzer",
             "confirm_fields": ["title", "condition", "description_html", "included_items"],
-            "action": "confirm",
+            "action": "save",
         },
         follow_redirects=False,
     )
@@ -177,3 +177,25 @@ def test_review_save_with_missing_core_fields_stays_in_needs_attention(client: T
     updated_detail = client.get(location)
     assert "needs_attention" in updated_detail.text
     assert "Fehlende Kernfelder" in updated_detail.text
+    assert "Blocker vor dem eBay-Schritt" in updated_detail.text
+
+
+def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Kleine Lampe", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    detail = client.get(location)
+
+    assert "Blocker vor dem eBay-Schritt" in detail.text
+    assert "Preisvorschlag fehlt" in detail.text
+    assert "Payment Policy ist nicht konfiguriert" in detail.text
+    assert "Fulfillment Policy ist nicht konfiguriert" in detail.text
+    assert "Return Policy ist nicht konfiguriert" in detail.text
+    assert "Merchant Location ist nicht konfiguriert" in detail.text
+    assert '<button class="button button--primary" type="submit" disabled>eBay-Draft erstellen</button>' in detail.text

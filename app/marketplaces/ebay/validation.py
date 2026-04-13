@@ -14,10 +14,15 @@ class MarketplaceValidationError(Exception):
         return "; ".join(self.errors)
 
 
-def validate_marketplace_ready(draft: Draft, settings: Settings) -> None:
+def collect_marketplace_readiness_errors(
+    draft: Draft,
+    settings: Settings,
+    *,
+    include_workflow_status: bool = True,
+) -> list[str]:
     errors: list[str] = []
 
-    if draft.workflow.status is not WorkflowStatus.READY_FOR_MARKETPLACE:
+    if include_workflow_status and draft.workflow.status is not WorkflowStatus.READY_FOR_MARKETPLACE:
         errors.append("Draft ist nicht bereit für den Marketplace-Schritt")
     if not draft.listing.title.strip():
         errors.append("Titel fehlt")
@@ -42,5 +47,10 @@ def validate_marketplace_ready(draft: Draft, settings: Settings) -> None:
         if not value:
             errors.append(f"{label} ist nicht konfiguriert")
 
+    return errors
+
+
+def validate_marketplace_ready(draft: Draft, settings: Settings) -> None:
+    errors = collect_marketplace_readiness_errors(draft, settings)
     if errors:
         raise MarketplaceValidationError(errors)

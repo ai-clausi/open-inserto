@@ -13,30 +13,36 @@
   <article class="card">
     <h2>Review-Zusammenfassung</h2>
     <div class="status-list">
-      <div class="status-item"><span>Workflow</span><strong>{{ draft.workflow.status }}</strong></div>
-      <div class="status-item"><span>Review-Status</span><strong>{{ review_state }}</strong></div>
-      <div class="status-item"><span>Review nötig</span><strong>{{ 'Ja' if draft.workflow.needs_review else 'Nein' }}</strong></div>
+      <div class="status-item"><span>Aktueller Workflow</span><strong>{{ draft.workflow.status }}</strong></div>
+      <div class="status-item"><span>Review-Bedarf</span><strong>{{ 'Offen' if draft.workflow.needs_review else 'Erledigt' }}</strong></div>
+      <div class="status-item"><span>Marketplace-Bereitschaft</span><strong>{{ 'Bereit' if not marketplace_readiness_errors and draft.workflow.status == 'ready_for_marketplace' else 'Noch nicht bereit' }}</strong></div>
       <div class="status-item"><span>Bilder</span><strong>{{ draft.source.images | length }}</strong></div>
     </div>
 
     {% if missing_core_fields %}
-      <h3>Fehlende Kernfelder</h3>
-      <ul>
-        {% for item in missing_core_fields %}
-          <li>{{ item }}</li>
-        {% endfor %}
-      </ul>
+      <div class="notice notice--warning">
+        <h3>Fehlende Kernfelder</h3>
+        <ul>
+          {% for item in missing_core_fields %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
     {% else %}
-      <p>Alle Kernfelder sind vorhanden oder wurden bewusst bestätigt.</p>
+      <div class="notice notice--success">
+        <p>Alle Kernfelder sind vorhanden oder wurden bewusst bestätigt.</p>
+      </div>
     {% endif %}
 
     {% if confidence_notes %}
-      <h3>Unsichere Angaben</h3>
-      <ul>
-        {% for item in confidence_notes %}
-          <li>{{ item }}</li>
-        {% endfor %}
-      </ul>
+      <div class="notice notice--info">
+        <h3>Unsichere Angaben</h3>
+        <ul>
+          {% for item in confidence_notes %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
     {% endif %}
   </article>
 
@@ -65,13 +71,26 @@
 
     {% set ebay_error = draft.marketplace.ebay.offer_data.get('lastError') %}
     {% if ebay_error %}
-      <h3>Letzter Fehler</h3>
-      <p>{{ ebay_error }}</p>
+      <div class="notice notice--error">
+        <h3>Letzter Fehler</h3>
+        <p>{{ ebay_error }}</p>
+      </div>
+    {% endif %}
+
+    {% if marketplace_readiness_errors %}
+      <div class="notice notice--warning">
+        <h3>Blocker vor dem eBay-Schritt</h3>
+        <ul>
+          {% for item in marketplace_readiness_errors %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
     {% endif %}
 
     <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md">
-      <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer.</p>
-      <button class="button button--primary" type="submit">eBay-Draft erstellen</button>
+      <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer. Der Button ist erst aktiv, wenn Draft und Konfiguration vollständig sind.</p>
+      <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Draft erstellen</button>
     </form>
   </article>
 </section>
@@ -188,10 +207,9 @@
 
       <article class="card action-card">
         <h3>Aktionen</h3>
-        <p>„Änderungen speichern“ hält den Draft im Review-Flow. „Nutzer-Review abschließen“ setzt den Draft bei ausreichender Freigabe auf <code>ready_for_marketplace</code>.</p>
-        <div class="button-row">
+        <p>„Änderungen speichern“ aktualisiert den Draft. Sobald keine offenen Review-Punkte mehr bestehen, wechselt der Draft automatisch auf <code>ready_for_marketplace</code>.</p>
+        <div class="button-row button-row--single">
           <button class="button button--secondary" type="submit" name="action" value="save">Änderungen speichern</button>
-          <button class="button button--primary" type="submit" name="action" value="confirm">Nutzer-Review abschließen</button>
         </div>
       </article>
     </section>
