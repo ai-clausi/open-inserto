@@ -13,9 +13,9 @@
   <article class="card">
     <h2>Review-Zusammenfassung</h2>
     <div class="status-list">
-      <div class="status-item"><span>Aktueller Workflow</span><strong>{{ draft.workflow.status }}</strong></div>
-      <div class="status-item"><span>Review-Bedarf</span><strong>{{ 'Offen' if draft.workflow.needs_review else 'Erledigt' }}</strong></div>
-      <div class="status-item"><span>Marketplace-Bereitschaft</span><strong>{{ 'Bereit' if not marketplace_readiness_errors and draft.workflow.status == 'ready_for_marketplace' else 'Noch nicht bereit' }}</strong></div>
+      <div class="status-item"><span>Status</span><strong>{{ review_status_label }}</strong></div>
+      <div class="status-item"><span>eBay-Draft</span><strong>{{ marketplace_status_label }}</strong></div>
+      <div class="status-item"><span>Technischer Workflow</span><strong>{{ draft.workflow.status }}</strong></div>
       <div class="status-item"><span>Bilder</span><strong>{{ draft.source.images | length }}</strong></div>
     </div>
 
@@ -77,9 +77,20 @@
       </div>
     {% endif %}
 
+    {% if marketplace_notes %}
+      <div class="notice notice--info">
+        <h3>Hinweise zum eBay-Draft</h3>
+        <ul>
+          {% for item in marketplace_notes %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
     {% if marketplace_readiness_errors %}
       <div class="notice notice--warning">
-        <h3>Blocker vor dem eBay-Schritt</h3>
+        <h3>Noch offen vor dem eBay-Schritt</h3>
         <ul>
           {% for item in marketplace_readiness_errors %}
             <li>{{ item }}</li>
@@ -89,7 +100,7 @@
     {% endif %}
 
     <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md">
-      <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer. Der Button ist erst aktiv, wenn Draft und Konfiguration vollständig sind.</p>
+      <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer. Der Button ist erst aktiv, wenn Review, Kategorie und Konfiguration dafür vollständig sind.</p>
       <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Draft erstellen</button>
     </form>
   </article>
@@ -149,7 +160,7 @@
 
       <article class="card">
         <h3>Ergänzende Angaben</h3>
-        <p class="section-copy">Optional, aber oft nützlich für bessere Qualität und weniger Nacharbeit.</p>
+        <p class="section-copy">Nicht alles hiervon ist für den Review-Schritt Pflicht. Für den späteren eBay-Draft kann vor allem die Kategorie trotzdem relevant sein.</p>
 
         <label class="field field--full" for="brand">
           <span>{{ optional_fields['brand'] }} <span class="field-badge field-badge--optional">Optional</span></span>
@@ -167,7 +178,7 @@
         </label>
 
         <label class="field field--full" for="category_suggestion">
-          <span>{{ optional_fields['category_suggestion'] }} <span class="field-badge field-badge--optional">Optional</span></span>
+          <span>{{ optional_fields['category_suggestion'] }} <span class="field-badge field-badge--required">Für eBay-Draft nötig</span></span>
           <input id="category_suggestion" name="category_suggestion" type="text" value="{{ draft.listing.category_suggestion }}" placeholder="z. B. Konsolen">
         </label>
 
@@ -207,7 +218,7 @@
 
       <article class="card action-card">
         <h3>Aktionen</h3>
-        <p>„Änderungen speichern“ aktualisiert den Draft. Sobald keine offenen Review-Punkte mehr bestehen, wechselt der Draft automatisch auf <code>ready_for_marketplace</code>.</p>
+        <p>„Änderungen speichern“ aktualisiert den Draft. Sobald die Review-Kernfelder vollständig sind, wird der Draft für den Marketplace-Schritt vorbereitet. Zusätzliche eBay-Voraussetzungen wie Kategorie oder Konfiguration siehst du oben separat.</p>
         <div class="button-row button-row--single">
           <button class="button button--secondary" type="submit" name="action" value="save">Änderungen speichern</button>
         </div>

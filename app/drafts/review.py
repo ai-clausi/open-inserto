@@ -28,7 +28,7 @@ def evaluate_review_state(draft: Draft) -> ReviewState:
     missing = get_missing_core_fields(draft)
     if is_blocked(draft):
         return "blocked"
-    if missing or get_confidence_notes(draft):
+    if missing:
         return "needs_attention"
     return "ready"
 

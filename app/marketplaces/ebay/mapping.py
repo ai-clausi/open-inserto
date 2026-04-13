@@ -4,6 +4,9 @@ from app.core.config import Settings
 from app.drafts.models import Draft
 
 
+DEFAULT_AUCTION_START_PRICE = 1.0
+
+
 CONDITION_MAP = {
     "neu": "NEW",
     "new": "NEW",
@@ -38,7 +41,7 @@ def build_inventory_item_payload(draft: Draft, settings: Settings) -> dict:
 
 
 def build_offer_payload(draft: Draft, settings: Settings) -> dict:
-    price = draft.listing.price_suggestion
+    price = draft.listing.price_suggestion if draft.listing.price_suggestion is not None else DEFAULT_AUCTION_START_PRICE
     return {
         "sku": draft.sku,
         "marketplaceId": settings.ebay_marketplace_id,

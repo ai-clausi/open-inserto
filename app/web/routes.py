@@ -17,7 +17,7 @@ from app.drafts.review import (
 )
 from app.drafts.upload_service import DraftUploadService, UploadAsset, UploadValidationError
 from app.marketplaces.ebay.service import EbayMarketplaceService
-from app.marketplaces.ebay.validation import collect_marketplace_readiness_errors
+from app.marketplaces.ebay.validation import collect_marketplace_notes, collect_marketplace_readiness_errors
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -137,6 +137,11 @@ def draft_detail(request: Request, draft_id: str):
         settings,
         include_workflow_status=False,
     )
+    marketplace_notes = collect_marketplace_notes(draft)
+    ebay_action_disabled = (
+        draft.workflow.status is not WorkflowStatus.READY_FOR_MARKETPLACE
+        or bool(marketplace_readiness_errors)
+    )
 
     return templates.TemplateResponse(
         request,
@@ -149,10 +154,10 @@ def draft_detail(request: Request, draft_id: str):
             confidence_notes=get_confidence_notes(draft),
             review_metadata=get_review_metadata(draft),
             marketplace_readiness_errors=marketplace_readiness_errors,
-            ebay_action_disabled=(
-                draft.workflow.status is not WorkflowStatus.READY_FOR_MARKETPLACE
-                or bool(marketplace_readiness_errors)
-            ),
+            marketplace_notes=marketplace_notes,
+            ebay_action_disabled=ebay_action_disabled,
+            marketplace_status_label=("Bereit für eBay-Draft" if not ebay_action_disabled else "Noch nicht bereit"),
+            review_status_label=("Review abgeschlossen" if not draft.workflow.needs_review else "Review noch offen"),
             core_fields=CORE_FIELDS,
             optional_fields=OPTIONAL_FIELDS,
         ),

@@ -143,7 +143,7 @@ def test_review_post_persists_changes_and_final_confirmation(client: TestClient)
     assert review_response.status_code == 303
 
     updated_detail = client.get(location)
-    assert "ready_for_marketplace" in updated_detail.text
+    assert "Review abgeschlossen" in updated_detail.text
     assert "Lampe aus Metall" in updated_detail.text
     assert "Desk 2000" in updated_detail.text
     assert "Schreibtischlampe" in updated_detail.text
@@ -177,7 +177,7 @@ def test_review_save_with_missing_core_fields_stays_in_needs_attention(client: T
     updated_detail = client.get(location)
     assert "needs_attention" in updated_detail.text
     assert "Fehlende Kernfelder" in updated_detail.text
-    assert "Blocker vor dem eBay-Schritt" in updated_detail.text
+    assert "Noch offen vor dem eBay-Schritt" in updated_detail.text
 
 
 def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client: TestClient):
@@ -192,8 +192,9 @@ def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client
     location = response.headers["location"]
     detail = client.get(location)
 
-    assert "Blocker vor dem eBay-Schritt" in detail.text
-    assert "Preisvorschlag fehlt" in detail.text
+    assert "Hinweise zum eBay-Draft" in detail.text
+    assert "Kein Preisvorschlag vorhanden – für Auktionen wird aktuell 1,00 € als Startpreis verwendet." in detail.text
+    assert "Noch offen vor dem eBay-Schritt" in detail.text
     assert "Payment Policy ist nicht konfiguriert" in detail.text
     assert "Fulfillment Policy ist nicht konfiguriert" in detail.text
     assert "Return Policy ist nicht konfiguriert" in detail.text

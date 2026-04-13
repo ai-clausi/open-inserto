@@ -88,6 +88,7 @@ def test_mapping_builds_inventory_and_offer_payloads(tmp_path):
     assert inventory_payload["product"]["title"] == "Nintendo Switch OLED"
     assert inventory_payload["product"]["imageUrls"] == ["https://i.example.test/01-original.jpg"]
     assert offer_payload["format"] == "AUCTION"
+    assert offer_payload["pricingSummary"]["auctionStartPrice"]["value"] == "199.99"
     assert offer_payload["pricingSummary"]["auctionStartPrice"]["currency"] == "EUR"
 
 
@@ -108,6 +109,16 @@ def test_service_creates_offer_and_persists_marketplace_refs(tmp_path):
     assert updated.marketplace.ebay.image_urls == ["https://i.example.test/01-original.jpg"]
     assert client.inventory_payloads[0][0] == draft.sku
     assert client.offer_payloads[0]["format"] == "AUCTION"
+
+
+def test_mapping_falls_back_to_default_auction_start_price(tmp_path):
+    settings = make_settings(tmp_path)
+    draft = make_draft(tmp_path)
+    draft.listing.price_suggestion = None
+
+    offer_payload = build_offer_payload(draft, settings)
+
+    assert offer_payload["pricingSummary"]["auctionStartPrice"]["value"] == "1.00"
 
 
 def test_service_blocks_draft_when_required_fields_are_missing(tmp_path):

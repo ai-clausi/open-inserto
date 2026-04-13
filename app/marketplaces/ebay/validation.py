@@ -6,6 +6,17 @@ from app.core.config import Settings
 from app.drafts.models import Draft, WorkflowStatus
 
 
+def collect_marketplace_notes(draft: Draft) -> list[str]:
+    notes: list[str] = []
+
+    if draft.listing.price_suggestion is None:
+        notes.append("Kein Preisvorschlag vorhanden – für Auktionen wird aktuell 1,00 € als Startpreis verwendet.")
+    if not draft.listing.category_suggestion.strip():
+        notes.append("Keine Kategorie gesetzt – für den eBay-Draft bitte noch eine passende Kategorie ergänzen.")
+
+    return notes
+
+
 @dataclass(slots=True)
 class MarketplaceValidationError(Exception):
     errors: list[str]
@@ -30,8 +41,6 @@ def collect_marketplace_readiness_errors(
         errors.append("Beschreibung fehlt")
     if not draft.listing.condition.strip():
         errors.append("Zustand fehlt")
-    if draft.listing.price_suggestion is None:
-        errors.append("Preisvorschlag fehlt")
     if not draft.listing.category_suggestion.strip():
         errors.append("Kategorie fehlt")
     if not draft.source.images:
