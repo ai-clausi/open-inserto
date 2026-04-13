@@ -10,7 +10,7 @@ def collect_marketplace_notes(draft: Draft) -> list[str]:
     notes: list[str] = []
 
     if draft.listing.price_suggestion is None:
-        notes.append("Kein Preisvorschlag vorhanden – für Auktionen wird aktuell 1,00 € als Startpreis verwendet.")
+        notes.append("Noch keine Preisschätzung vorhanden – für Auktionen wird aktuell trotzdem 1,00 € als Startpreis verwendet.")
     if not draft.listing.category_suggestion.strip():
         notes.append("Keine Kategorie gesetzt – für den eBay-Draft bitte noch eine passende Kategorie ergänzen.")
 

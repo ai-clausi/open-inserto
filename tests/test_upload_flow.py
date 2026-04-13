@@ -63,6 +63,7 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
     assert "Leichte Gebrauchsspuren" in detail.text
     assert "Testgerät" in detail.text
     assert "ready_for_review" in detail.text
+    assert "Kernangaben vollständig" in detail.text
     assert "Netzteil" in detail.text
     assert "Seriennummer verdeckt" in detail.text
     assert "Gerendertes Listing-HTML" in detail.text
@@ -176,6 +177,7 @@ def test_review_save_with_missing_core_fields_stays_in_needs_attention(client: T
     assert review_response.status_code == 303
     updated_detail = client.get(location)
     assert "needs_attention" in updated_detail.text
+    assert "Kernangaben noch prüfen" in updated_detail.text
     assert "Fehlende Kernfelder" in updated_detail.text
     assert "Noch offen vor dem eBay-Schritt" in updated_detail.text
 
@@ -193,7 +195,8 @@ def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client
     detail = client.get(location)
 
     assert "Hinweise zum eBay-Draft" in detail.text
-    assert "Kein Preisvorschlag vorhanden – für Auktionen wird aktuell 1,00 € als Startpreis verwendet." in detail.text
+    assert "Noch keine Preisschätzung vorhanden – für Auktionen wird aktuell trotzdem 1,00 € als Startpreis verwendet." in detail.text
+    assert "Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch." in detail.text
     assert "Noch offen vor dem eBay-Schritt" in detail.text
     assert "Payment Policy ist nicht konfiguriert" in detail.text
     assert "Fulfillment Policy ist nicht konfiguriert" in detail.text

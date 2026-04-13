@@ -13,11 +13,19 @@
   <article class="card">
     <h2>Review-Zusammenfassung</h2>
     <div class="status-list">
-      <div class="status-item"><span>Status</span><strong>{{ review_status_label }}</strong></div>
+      <div class="status-item"><span>Review</span><strong>{{ review_status_label }}</strong></div>
+      <div class="status-item"><span>Kernangaben</span><strong>{{ review_state_label }}</strong></div>
       <div class="status-item"><span>eBay-Draft</span><strong>{{ marketplace_status_label }}</strong></div>
-      <div class="status-item"><span>Technischer Workflow</span><strong>{{ draft.workflow.status }}</strong></div>
       <div class="status-item"><span>Bilder</span><strong>{{ draft.source.images | length }}</strong></div>
     </div>
+
+    {% if show_technical_workflow_hint %}
+      <div class="notice notice--info">
+        <h3>Technischer Status</h3>
+        <p>Interner Workflow-Status: <strong>{{ draft.workflow.status }}</strong></p>
+        <p>Der technische Status dient nur der Systemdiagnose. Maßgeblich für den nächsten Schritt sind oben die Bereiche „Kernangaben“ und „eBay-Draft“.</p>
+      </div>
+    {% endif %}
 
     {% if missing_core_fields %}
       <div class="notice notice--warning">
@@ -30,7 +38,7 @@
       </div>
     {% else %}
       <div class="notice notice--success">
-        <p>Alle Kernfelder sind vorhanden oder wurden bewusst bestätigt.</p>
+        <p>Die Kernangaben für das Review sind vollständig oder wurden bewusst leer bestätigt.</p>
       </div>
     {% endif %}
 
@@ -80,6 +88,7 @@
     {% if marketplace_notes %}
       <div class="notice notice--info">
         <h3>Hinweise zum eBay-Draft</h3>
+        <p>Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch.</p>
         <ul>
           {% for item in marketplace_notes %}
             <li>{{ item }}</li>
@@ -100,7 +109,7 @@
     {% endif %}
 
     <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md">
-      <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer. Der Button ist erst aktiv, wenn Review, Kategorie und Konfiguration dafür vollständig sind.</p>
+      <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer. Der Button ist erst aktiv, wenn die Review-Kernangaben passen und keine fachlichen oder konfigurativen eBay-Blocker mehr offen sind.</p>
       <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Draft erstellen</button>
     </form>
   </article>

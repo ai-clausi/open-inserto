@@ -143,21 +143,34 @@ def draft_detail(request: Request, draft_id: str):
         or bool(marketplace_readiness_errors)
     )
 
+    review_state = evaluate_review_state(draft)
+    review_status_label = "Review abgeschlossen" if not draft.workflow.needs_review else "Review noch offen"
+    if not marketplace_readiness_errors:
+        marketplace_status_label = "Bereit für eBay-Draft"
+    elif any("ist nicht konfiguriert" in item for item in marketplace_readiness_errors):
+        marketplace_status_label = "Blockiert durch Konfiguration"
+    else:
+        marketplace_status_label = "Noch Angaben prüfen"
+
     return templates.TemplateResponse(
         request,
         "draft_detail.html",
         build_context(
             request,
             draft=draft,
-            review_state=evaluate_review_state(draft),
+            review_state=review_state,
             missing_core_fields=get_missing_core_fields(draft),
             confidence_notes=get_confidence_notes(draft),
             review_metadata=get_review_metadata(draft),
             marketplace_readiness_errors=marketplace_readiness_errors,
             marketplace_notes=marketplace_notes,
             ebay_action_disabled=ebay_action_disabled,
-            marketplace_status_label=("Bereit für eBay-Draft" if not ebay_action_disabled else "Noch nicht bereit"),
-            review_status_label=("Review abgeschlossen" if not draft.workflow.needs_review else "Review noch offen"),
+            marketplace_status_label=marketplace_status_label,
+            review_status_label=review_status_label,
+            review_state_label=(
+                "Kernangaben vollständig" if review_state == "ready" else "Kernangaben noch prüfen"
+            ),
+            show_technical_workflow_hint=(review_state != "ready" or bool(marketplace_readiness_errors)),
             core_fields=CORE_FIELDS,
             optional_fields=OPTIONAL_FIELDS,
         ),
