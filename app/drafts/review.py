@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from app.drafts.analysis import _build_description_html, _collect_issues, _split_lines_or_csv
+from app.drafts.analysis import _collect_issues, _split_lines_or_csv
 from app.drafts.models import Draft, WorkflowStatus
+from app.drafts.rendering import render_listing_description
 
 ReviewState = Literal["ready", "needs_attention", "blocked"]
 
@@ -85,15 +86,6 @@ def update_draft_from_review(
     draft.listing.category_suggestion = category_suggestion.strip()
     draft.listing.included_items = _split_lines_or_csv(included_items)
     draft.listing.issues = _collect_issues(hints)
-    draft.listing.description_html = _build_description_html(
-        product_name=draft.listing.title,
-        condition=draft.listing.condition,
-        accessories=draft.listing.included_items,
-        notes=description.strip(),
-        issues=draft.listing.issues,
-        missing_information=[],
-        confidence_notes=get_confidence_notes(draft),
-    )
 
     draft.source.user_input.update(
         {
@@ -104,6 +96,7 @@ def update_draft_from_review(
         }
     )
     draft.source.notes = description.strip()
+    draft.listing.description_html = render_listing_description(draft)
 
     missing = get_missing_core_fields(draft)
     state = evaluate_review_state(draft)

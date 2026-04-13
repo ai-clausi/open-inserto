@@ -1,0 +1,71 @@
+{% macro row_html(label, value_html) -%}
+<tr>
+  <td style="padding: 3px; vertical-align: top; width: 180px;">
+    <p><b>{{ label }}</b></p>
+  </td>
+  <td style="padding: 3px; vertical-align: top;">
+    {{ value_html | safe }}
+  </td>
+</tr>
+{%- endmacro %}
+
+{% macro spacer_row() -%}
+<tr>
+  <td style="padding: 3px; vertical-align: top;"><p>&nbsp;</p></td>
+  <td style="padding: 3px; vertical-align: top;"><p>&nbsp;</p></td>
+</tr>
+{%- endmacro %}
+
+<font rwr="1" size="4" style="font-family: Arial;">
+  <b>Wichtiger Hinweis:</b><br>
+  Es handelt sich um einen Privatverkauf, Gewährleistung und Rücknahme sind ausgeschlossen.
+  Der Verkauf findet daher unter Ausschluss jeglicher Sachmängelhaftung statt.
+  Der Käufer trägt den Kaufpreis und die Versandkosten.
+  <br>
+  <br>
+  <table>
+    <tbody>
+      {% if manufacturer %}
+      {{ row_html('Hersteller:', manufacturer) }}
+      {% endif %}
+
+      {{ row_html('Produkt:', product_name) }}
+
+      {% if product_identifier_value %}
+      {{ row_html((product_identifier_type or 'Modell-Nummer') ~ ':', product_identifier_value) }}
+      {% endif %}
+
+      {% if model %}
+      {{ row_html('Modell:', model) }}
+      {% endif %}
+
+      {% if subtitle %}
+      {{ row_html('Untertitel:', subtitle) }}
+      {% endif %}
+
+      {% if purchase_date %}
+      {{ row_html('Kaufdatum:', purchase_date) }}
+      {% endif %}
+
+      {% if condition %}
+      {{ spacer_row() }}
+      {{ row_html('Zustand:', condition) }}
+      {% endif %}
+
+      {% if description_html %}
+      {{ spacer_row() }}
+      {{ row_html('Beschreibung:', description_html) }}
+      {% endif %}
+
+      {% if included_items_html %}
+      {{ spacer_row() }}
+      {{ row_html('Lieferumfang:', included_items_html) }}
+      {% endif %}
+
+      {% if issues_html %}
+      {{ spacer_row() }}
+      {{ row_html('Hinweise:', issues_html) }}
+      {% endif %}
+    </tbody>
+  </table>
+</font>
