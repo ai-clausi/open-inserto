@@ -53,6 +53,27 @@
       {% endfor %}
     </div>
   </article>
+
+  <article class="card">
+    <h2>eBay-Status</h2>
+    <div class="status-list">
+      <div class="status-item"><span>Modus</span><strong>{{ ebay_mode }}</strong></div>
+      <div class="status-item"><span>Inventory Item Key</span><strong>{{ draft.marketplace.ebay.inventory_item_key or '–' }}</strong></div>
+      <div class="status-item"><span>Offer ID</span><strong>{{ draft.marketplace.ebay.offer_id or '–' }}</strong></div>
+      <div class="status-item"><span>Bild-URLs</span><strong>{{ draft.marketplace.ebay.image_urls | length }}</strong></div>
+    </div>
+
+    {% set ebay_error = draft.marketplace.ebay.offer_data.get('lastError') %}
+    {% if ebay_error %}
+      <h3>Letzter Fehler</h3>
+      <p>{{ ebay_error }}</p>
+    {% endif %}
+
+    <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md">
+      <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer.</p>
+      <button class="button button--primary" type="submit">eBay-Draft erstellen</button>
+    </form>
+  </article>
 </section>
 
 <section class="panel review-panel">

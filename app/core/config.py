@@ -18,11 +18,17 @@ class Settings(BaseSettings):
 
     ebay_mode: str = Field(default="sandbox", pattern="^(sandbox|live)$")
     ebay_marketplace_id: str = "EBAY_DE"
+    ebay_content_language: str = "de-DE"
+    ebay_currency: str = "EUR"
     ebay_client_id: str | None = None
     ebay_client_secret: str | None = None
     ebay_ru_name: str | None = None
     ebay_access_token: str | None = None
     ebay_refresh_token: str | None = None
+    ebay_payment_policy_id: str | None = None
+    ebay_fulfillment_policy_id: str | None = None
+    ebay_return_policy_id: str | None = None
+    ebay_merchant_location_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -37,6 +43,12 @@ class Settings(BaseSettings):
         if self.database_url.startswith(prefix):
             return Path(self.database_url[len(prefix) :])
         return Path(self.database_url)
+
+    @property
+    def ebay_api_base_url(self) -> str:
+        if self.ebay_mode == "live":
+            return "https://api.ebay.com"
+        return "https://api.sandbox.ebay.com"
 
 
 @lru_cache

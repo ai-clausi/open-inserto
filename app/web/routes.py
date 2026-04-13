@@ -15,6 +15,7 @@ from app.drafts.review import (
     update_draft_from_review,
 )
 from app.drafts.upload_service import DraftUploadService, UploadAsset, UploadValidationError
+from app.marketplaces.ebay.service import EbayMarketplaceService
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -183,3 +184,16 @@ async def draft_review_submit(
     )
     repository.save_draft(draft)
     return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/drafts/{draft_id}/marketplace/ebay", response_class=HTMLResponse)
+def draft_create_ebay_offer(draft_id: str):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    service = EbayMarketplaceService(settings=settings, repository=repository)
+    service.create_unpublished_offer_for_draft(draft_id)
+    return RedirectResponse(url=f"/drafts/{draft_id}", status_code=status.HTTP_303_SEE_OTHER)
