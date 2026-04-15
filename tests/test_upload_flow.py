@@ -16,6 +16,22 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'data' / 'test.db'}")
+
+    # Make these UI tests deterministic even when a developer has local eBay
+    # credentials/policies configured via shell env or a repository .env file.
+    for env_var in (
+        "EBAY_CLIENT_ID",
+        "EBAY_CLIENT_SECRET",
+        "EBAY_RU_NAME",
+        "EBAY_ACCESS_TOKEN",
+        "EBAY_REFRESH_TOKEN",
+        "EBAY_PAYMENT_POLICY_ID",
+        "EBAY_FULFILLMENT_POLICY_ID",
+        "EBAY_RETURN_POLICY_ID",
+        "EBAY_MERCHANT_LOCATION_KEY",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
     get_settings.cache_clear()
     app = create_app()
     with TestClient(app) as test_client:
