@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -53,7 +54,9 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()
+    project_dir = Path(os.getenv("PROJECT_DIR", ".")).resolve()
+    env_file = project_dir / ".env"
+    settings = Settings(_env_file=env_file if env_file.exists() else None)
     settings.project_dir = settings.project_dir.resolve()
     if not settings.data_dir.is_absolute():
         settings.data_dir = (settings.project_dir / settings.data_dir).resolve()
