@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -17,6 +17,8 @@ from app.drafts.review import (
 )
 from app.drafts.upload_service import DraftUploadService, UploadAsset, UploadValidationError
 from app.marketplaces.ebay.service import EbayMarketplaceService
+from app.marketplaces.ebay.auth import EbayAuthStore, build_auth_connect_url
+from app.marketplaces.ebay.client import EbayAuthError, EbayClient
 from app.marketplaces.ebay.validation import collect_marketplace_notes, collect_marketplace_readiness_errors
 
 router = APIRouter()
@@ -33,12 +35,18 @@ EXTRA_FIELDS = [
 
 def build_context(request: Request, **extra):
     settings = get_settings()
+    auth_store = EbayAuthStore(settings.database_path)
+    token_data = auth_store.get_tokens()
+    ebay_auth_connected = bool(
+        token_data.refresh_token or token_data.access_token or settings.ebay_refresh_token or settings.ebay_access_token
+    )
     context = {
         "request": request,
         "app_name": settings.app_name,
         "ebay_mode": settings.ebay_mode,
         "database_url": settings.database_url,
         "extra_fields": EXTRA_FIELDS,
+        "ebay_auth_connected": ebay_auth_connected,
     }
     context.update(extra)
     return context
@@ -128,14 +136,18 @@ async def upload_draft(
 def draft_detail(request: Request, draft_id: str):
     settings = get_settings()
     repository = DraftRepository(settings.database_path)
+    auth_store = EbayAuthStore(settings.database_path)
     draft = repository.get_draft(draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
 
+    auth_tokens = auth_store.get_tokens()
+    ebay_auth_connected = bool(auth_tokens.refresh_token or auth_tokens.access_token or settings.ebay_refresh_token or settings.ebay_access_token)
     marketplace_readiness_errors = collect_marketplace_readiness_errors(
         draft,
         settings,
         include_workflow_status=False,
+        auth_connected=ebay_auth_connected,
     )
     marketplace_notes = collect_marketplace_notes(draft)
     ebay_action_disabled = (
@@ -173,6 +185,7 @@ def draft_detail(request: Request, draft_id: str):
             show_technical_workflow_hint=(review_state != "ready" or bool(marketplace_readiness_errors)),
             core_fields=CORE_FIELDS,
             optional_fields=OPTIONAL_FIELDS,
+            ebay_auth_connected=ebay_auth_connected,
         ),
     )
 
@@ -225,6 +238,67 @@ def draft_create_ebay_offer(draft_id: str):
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
 
-    service = EbayMarketplaceService(settings=settings, repository=repository)
+    auth_store = EbayAuthStore(settings.database_path)
+    service = EbayMarketplaceService(
+        settings=settings,
+        repository=repository,
+        client=EbayClient(settings, auth_store=auth_store),
+    )
     service.create_unpublished_offer_for_draft(draft_id)
     return RedirectResponse(url=f"/drafts/{draft_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/integrations/ebay/connect")
+def ebay_connect():
+    settings = get_settings()
+    if not settings.ebay_client_id or not settings.ebay_ru_name:
+        raise HTTPException(status_code=400, detail="eBay OAuth ist nicht vollständig konfiguriert")
+
+    auth_store = EbayAuthStore(settings.database_path)
+    state = auth_store.issue_state()
+    return RedirectResponse(url=build_auth_connect_url(settings, state), status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/integrations/ebay/callback", response_class=HTMLResponse)
+def ebay_callback(
+    request: Request,
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+):
+    settings = get_settings()
+    auth_store = EbayAuthStore(settings.database_path)
+
+    if error:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            build_context(request, ebay_connect_error=f"eBay-Autorisierung fehlgeschlagen: {error}"),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    expected_state = auth_store.get_pending_state()
+    if not state or state != expected_state:
+        raise HTTPException(status_code=400, detail="Ungültiger eBay OAuth-Status")
+    if not code:
+        raise HTTPException(status_code=400, detail="eBay OAuth-Code fehlt")
+
+    client = EbayClient(settings, auth_store=auth_store)
+    try:
+        client.exchange_authorization_code(code)
+    except EbayAuthError as exc:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            build_context(request, ebay_connect_error=f"eBay-Verbindung konnte nicht hergestellt werden: {exc}"),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    finally:
+        client.close()
+        auth_store.clear_state()
+
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        build_context(request, ebay_connect_success="eBay wurde erfolgreich verbunden. Die Tokens werden jetzt in der App gespeichert."),
+    )

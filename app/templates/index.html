@@ -21,8 +21,23 @@
     <h2>Konfiguration</h2>
     <ul>
       <li><strong>eBay-Modus:</strong> {{ ebay_mode }}</li>
+      <li><strong>eBay-Verbindung:</strong> {{ 'verbunden' if ebay_auth_connected else 'nicht verbunden' }}</li>
       <li><strong>Datenbank:</strong> {{ database_url }}</li>
     </ul>
+
+    {% if ebay_connect_success %}
+      <div class="notice notice--success"><p>{{ ebay_connect_success }}</p></div>
+    {% endif %}
+
+    {% if ebay_connect_error %}
+      <div class="notice notice--error"><p>{{ ebay_connect_error }}</p></div>
+    {% endif %}
+
+    {% if not ebay_auth_connected %}
+      <form method="post" action="/integrations/ebay/connect" class="stack-md">
+        <button class="button button--secondary" type="submit">Mit eBay verbinden</button>
+      </form>
+    {% endif %}
   </article>
 
   <article class="card">

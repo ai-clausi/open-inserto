@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     ebay_client_id: str | None = None
     ebay_client_secret: str | None = None
     ebay_ru_name: str | None = None
+    ebay_auth_callback_url: str | None = None
     ebay_access_token: str | None = None
     ebay_refresh_token: str | None = None
     ebay_payment_policy_id: str | None = None
@@ -50,6 +51,12 @@ class Settings(BaseSettings):
         if self.ebay_mode == "live":
             return "https://api.ebay.com"
         return "https://api.sandbox.ebay.com"
+
+    @property
+    def ebay_auth_base_url(self) -> str:
+        if self.ebay_mode == "live":
+            return "https://auth.ebay.com"
+        return "https://auth.sandbox.ebay.com"
 
 
 @lru_cache

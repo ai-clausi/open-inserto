@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from app.core.config import Settings
+from app.marketplaces.ebay.auth import EbayAuthStore, EbayTokenData, SCOPES
 
 
 class EbayError(Exception):
@@ -33,37 +34,77 @@ class EbayAccessToken:
 
 
 class EbayClient:
-    def __init__(self, settings: Settings, *, client: httpx.Client | None = None):
+    def __init__(self, settings: Settings, *, client: httpx.Client | None = None, auth_store: EbayAuthStore | None = None):
         self.settings = settings
         self._client = client or httpx.Client(timeout=30.0)
+        self.auth_store = auth_store
 
     def close(self) -> None:
         self._client.close()
 
     def get_access_token(self) -> EbayAccessToken:
-        if self.settings.ebay_refresh_token:
-            response = self._client.post(
-                f"{self.settings.ebay_api_base_url}/identity/v1/oauth2/token",
-                auth=(self.settings.ebay_client_id or "", self.settings.ebay_client_secret or ""),
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": self.settings.ebay_refresh_token,
-                    "scope": "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account",
-                },
-            )
-            self._raise_for_status(response, auth_failure_cls=EbayAuthError)
-            payload = response.json()
+        stored_tokens = self.auth_store.get_tokens() if self.auth_store else EbayTokenData()
+        refresh_token = stored_tokens.refresh_token or self.settings.ebay_refresh_token
+        if refresh_token:
+            token_data = self.exchange_refresh_token(refresh_token)
+            if self.auth_store:
+                self.auth_store.save_tokens(token_data)
             return EbayAccessToken(
-                token=payload["access_token"],
-                expires_in=payload.get("expires_in"),
-                token_type=payload.get("token_type", "Bearer"),
+                token=token_data.access_token or "",
+                expires_in=token_data.expires_in,
+                token_type=token_data.token_type,
             )
 
-        if self.settings.ebay_access_token:
-            return EbayAccessToken(token=self.settings.ebay_access_token)
+        access_token = stored_tokens.access_token or self.settings.ebay_access_token
+        if access_token:
+            return EbayAccessToken(token=access_token, token_type=stored_tokens.token_type)
 
         raise EbayAuthError("eBay credentials missing: access token or refresh token required")
+
+    def exchange_refresh_token(self, refresh_token: str) -> EbayTokenData:
+        response = self._client.post(
+            f"{self.settings.ebay_api_base_url}/identity/v1/oauth2/token",
+            auth=(self.settings.ebay_client_id or "", self.settings.ebay_client_secret or ""),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "scope": SCOPES,
+            },
+        )
+        self._raise_for_status(response, auth_failure_cls=EbayAuthError)
+        payload = response.json()
+        return EbayTokenData(
+            access_token=payload.get("access_token"),
+            refresh_token=payload.get("refresh_token") or refresh_token,
+            expires_in=payload.get("expires_in"),
+            token_type=payload.get("token_type", "Bearer"),
+        )
+
+    def exchange_authorization_code(self, code: str) -> EbayTokenData:
+        if not self.settings.ebay_ru_name:
+            raise EbayAuthError("eBay Redirect-URI-ID (RuName) fehlt")
+        response = self._client.post(
+            f"{self.settings.ebay_api_base_url}/identity/v1/oauth2/token",
+            auth=(self.settings.ebay_client_id or "", self.settings.ebay_client_secret or ""),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": self.settings.ebay_ru_name,
+            },
+        )
+        self._raise_for_status(response, auth_failure_cls=EbayAuthError)
+        payload = response.json()
+        token_data = EbayTokenData(
+            access_token=payload.get("access_token"),
+            refresh_token=payload.get("refresh_token"),
+            expires_in=payload.get("expires_in"),
+            token_type=payload.get("token_type", "Bearer"),
+        )
+        if self.auth_store:
+            self.auth_store.save_tokens(token_data)
+        return token_data
 
     def upload_image(self, access_token: EbayAccessToken, image_path: Path) -> dict[str, Any]:
         with image_path.open("rb") as handle:

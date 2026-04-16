@@ -23,7 +23,14 @@ class EbayMarketplaceService:
             raise KeyError(f"Draft not found: {draft_id}")
 
         try:
-            validate_marketplace_ready(draft, self.settings)
+            auth_connected = bool(self.settings.ebay_refresh_token or self.settings.ebay_access_token)
+            if isinstance(self.client, EbayClient) and self.client.auth_store is not None:
+                tokens = self.client.auth_store.get_tokens()
+                auth_connected = auth_connected or bool(tokens.refresh_token or tokens.access_token)
+            elif not isinstance(self.client, EbayClient):
+                auth_connected = True
+
+            validate_marketplace_ready(draft, self.settings, auth_connected=auth_connected)
             access_token = self.client.get_access_token()
             draft.marketplace.ebay.image_urls = self._upload_images(draft, access_token)
 

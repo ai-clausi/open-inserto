@@ -30,6 +30,7 @@ def collect_marketplace_readiness_errors(
     settings: Settings,
     *,
     include_workflow_status: bool = True,
+    auth_connected: bool | None = None,
 ) -> list[str]:
     errors: list[str] = []
 
@@ -47,6 +48,7 @@ def collect_marketplace_readiness_errors(
         errors.append("Mindestens ein Bild ist erforderlich")
 
     required_settings = {
+        "eBay-Zugang": auth_connected if auth_connected is not None else (settings.ebay_refresh_token or settings.ebay_access_token),
         "Payment Policy": settings.ebay_payment_policy_id,
         "Fulfillment Policy": settings.ebay_fulfillment_policy_id,
         "Return Policy": settings.ebay_return_policy_id,
@@ -54,12 +56,15 @@ def collect_marketplace_readiness_errors(
     }
     for label, value in required_settings.items():
         if not value:
-            errors.append(f"{label} ist nicht konfiguriert")
+            if label == "eBay-Zugang":
+                errors.append("eBay ist noch nicht verbunden")
+            else:
+                errors.append(f"{label} ist nicht konfiguriert")
 
     return errors
 
 
-def validate_marketplace_ready(draft: Draft, settings: Settings) -> None:
-    errors = collect_marketplace_readiness_errors(draft, settings)
+def validate_marketplace_ready(draft: Draft, settings: Settings, *, auth_connected: bool | None = None) -> None:
+    errors = collect_marketplace_readiness_errors(draft, settings, auth_connected=auth_connected)
     if errors:
         raise MarketplaceValidationError(errors)

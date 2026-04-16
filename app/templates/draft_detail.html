@@ -72,6 +72,7 @@
     <h2>eBay-Status</h2>
     <div class="status-list">
       <div class="status-item"><span>Modus</span><strong>{{ ebay_mode }}</strong></div>
+      <div class="status-item"><span>Verbindung</span><strong>{{ 'Verbunden' if ebay_auth_connected else 'Nicht verbunden' }}</strong></div>
       <div class="status-item"><span>Inventory Item Key</span><strong>{{ draft.marketplace.ebay.inventory_item_key or '–' }}</strong></div>
       <div class="status-item"><span>Offer ID</span><strong>{{ draft.marketplace.ebay.offer_id or '–' }}</strong></div>
       <div class="status-item"><span>Bild-URLs</span><strong>{{ draft.marketplace.ebay.image_urls | length }}</strong></div>
@@ -106,6 +107,13 @@
           {% endfor %}
         </ul>
       </div>
+    {% endif %}
+
+    {% if not ebay_auth_connected %}
+      <form method="post" action="/integrations/ebay/connect" class="stack-md">
+        <p>Vor dem ersten eBay-Draft muss Open Inserto einmal mit deinem eBay-Konto verbunden werden. Danach werden Access- und Refresh-Token automatisch in der App gespeichert.</p>
+        <button class="button button--secondary" type="submit">Mit eBay verbinden</button>
+      </form>
     {% endif %}
 
     <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md">
