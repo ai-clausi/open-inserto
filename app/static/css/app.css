@@ -105,9 +105,21 @@ body {
 }
 
 .hero-actions {
-  display: flex;
+  display: grid;
   gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin-top: 1.25rem;
+}
+
+.hero-actions .button {
+  width: 100%;
+  min-width: 0;
+  margin-top: 0;
+  text-align: center;
+}
+
+.hero-actions--split {
+  max-width: 34rem;
 }
 
 .eyebrow {
@@ -313,6 +325,9 @@ code {
   font-weight: 700;
   cursor: pointer;
   text-decoration: none;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .card h3:first-child,
@@ -757,12 +772,24 @@ code {
   margin: 0;
 }
 
+.draft-list-card h3 {
+  overflow-wrap: anywhere;
+}
+
 .draft-list-card__top,
 .draft-list-card__actions {
   display: flex;
   gap: 0.75rem;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.draft-list-card__top > * {
+  min-width: 0;
+}
+
+.draft-list-card__top .status-chip {
+  flex-shrink: 0;
 }
 
 .draft-list-card__actions .button {
@@ -827,7 +854,8 @@ code {
   .detail-shell,
   .upload-layout,
   .button-row,
-  .draft-meta-list {
+  .draft-meta-list,
+  .hero-actions {
     grid-template-columns: 1fr;
   }
 
