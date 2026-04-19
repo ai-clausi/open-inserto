@@ -3,35 +3,201 @@
 {% block title %}{{ app_name }} – MVP{% endblock %}
 
 {% block content %}
-<section class="hero">
-  <p class="eyebrow">MVP Upload Flow</p>
-  <h1>{{ app_name }}</h1>
-  <p>
-    Der aktuelle Stand deckt den Draft-Upload bereits end-to-end ab: Bilder hochladen,
-    lokal speichern, normalisieren und als neuen Draft vorbereiten.
-  </p>
+<section class="hero hero--landing">
+  <div class="hero-landing__copy">
+    <p class="eyebrow">MVP Upload Flow</p>
+    <h1>{{ app_name }}</h1>
+    <p class="hero-lead">
+      Bilder hochladen, Draft strukturieren und den eBay-Setup-Status ohne Ratearbeit sichtbar halten.
+    </p>
+    <p class="hero-support">
+      Der aktuelle Stand deckt den Draft-Upload bereits end-to-end ab: Bilder hochladen,
+      lokal speichern, normalisieren und als neuen Draft vorbereiten.
+    </p>
 
-  <div class="hero-actions">
-    <a class="button button--primary" href="/drafts/upload">Zum Upload</a>
+    <div class="hero-actions">
+      <a class="button button--primary" href="/drafts/upload">Zum Upload</a>
+    </div>
   </div>
+
+  <aside class="hero-landing__panel">
+    <p class="eyebrow">Systemstatus</p>
+    <div class="landing-metrics">
+      <div class="landing-metric">
+        <span>eBay-Modus</span>
+        <strong>{{ ebay_mode }}</strong>
+      </div>
+      <div class="landing-metric">
+        <span>Autorisierung</span>
+        <strong>{{ 'verbunden' if ebay_auth_connected else 'nicht verbunden' }}</strong>
+      </div>
+      <div class="landing-metric landing-metric--wide">
+        <span>Datenbank</span>
+        <strong>{{ database_url }}</strong>
+      </div>
+    </div>
+  </aside>
 </section>
 
-<section class="card-grid">
-  <article class="card">
-    <h2>Konfiguration</h2>
-    <ul>
-      <li><strong>eBay-Modus:</strong> {{ ebay_mode }}</li>
-      <li><strong>Datenbank:</strong> {{ database_url }}</li>
-    </ul>
+<section class="landing-grid">
+  <article class="card card--config">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Konfiguration</p>
+        <h2>eBay-Setup</h2>
+      </div>
+      <div class="status-chip {% if ebay_auth_connected %}status-chip--success{% else %}status-chip--muted{% endif %}">
+        {{ 'eBay verbunden' if ebay_auth_connected else 'eBay nicht verbunden' }}
+      </div>
+    </div>
+
+    {% if ebay_auth_connected %}
+      <div class="default-grid">
+        <div class="default-card">
+          <span>Payment Policy</span>
+          <strong>{{ ebay_effective_config.payment_policy_id or '–' }}</strong>
+        </div>
+        <div class="default-card">
+          <span>Fulfillment Policy</span>
+          <strong>{{ ebay_effective_config.fulfillment_policy_id or '–' }}</strong>
+        </div>
+        <div class="default-card">
+          <span>Return Policy</span>
+          <strong>{{ ebay_effective_config.return_policy_id or '–' }}</strong>
+        </div>
+        <div class="default-card">
+          <span>Merchant Location</span>
+          <strong>{{ ebay_effective_config.merchant_location_key or '–' }}</strong>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if ebay_connect_success %}
+      <div class="notice notice--success"><p>{{ ebay_connect_success }}</p></div>
+    {% endif %}
+
+    {% if ebay_connect_error %}
+      <div class="notice notice--error"><p>{{ ebay_connect_error }}</p></div>
+    {% endif %}
+
+    {% if not ebay_auth_connected %}
+      <form method="post" action="/integrations/ebay/connect" class="stack-md">
+        <button class="button button--secondary" type="submit">eBay verbinden</button>
+      </form>
+    {% endif %}
+
+    {% if ebay_auth_connected %}
+      <form method="post" action="/integrations/ebay/discover" class="stack-md action-strip">
+        <button class="button button--secondary" type="submit">Account-Ressourcen laden</button>
+      </form>
+
+      {% if ebay_policy_management_opted_in is false %}
+        <div class="notice notice--warning">
+          <h3>Business Policies noch nicht aktiviert</h3>
+          <p>Für Payment, Fulfillment und Return Policies muss der verbundene eBay-Account im Seller-Programm <strong>SELLING_POLICY_MANAGEMENT</strong> aktiviert sein.</p>
+          <form method="post" action="/integrations/ebay/programs/selling-policy-management/opt-in" class="stack-md">
+            <button class="button button--secondary" type="submit">Selling Policy Management aktivieren</button>
+          </form>
+        </div>
+      {% endif %}
+
+      {% if ebay_discovered_resources.payment_policies or ebay_discovered_resources.fulfillment_policies or ebay_discovered_resources.return_policies or ebay_discovered_resources.merchant_locations %}
+        {% if not ebay_discovered_resources.payment_policies or not ebay_discovered_resources.fulfillment_policies or not ebay_discovered_resources.return_policies %}
+          <div class="notice notice--warning">
+            <h3>Business Policies fehlen noch</h3>
+            <p>Für eBay-Drafts werden Payment-, Fulfillment- und Return-Policies benötigt. Die Standard-Konfiguration legt eine No-Returns-Policy, Sofortzahlung und DHL Standardversand mit Paket und Päckchen an.</p>
+            <form method="post" action="/integrations/ebay/policies/create-defaults" class="stack-md">
+              <button class="button button--secondary" type="submit">Standard-Business-Policies anlegen</button>
+            </form>
+          </div>
+        {% endif %}
+
+        <form method="post" action="/integrations/ebay/defaults" class="stack-md">
+          <div class="section-head section-head--compact">
+            <div>
+              <h3>Gefundene Account-Ressourcen</h3>
+              <p>Diese Werte stammen aus dem aktuell verbundenen eBay-Account und können als Laufzeit-Defaults gespeichert werden.</p>
+            </div>
+          </div>
+
+          <label class="field field--full" for="payment_policy_id">
+            <span>Payment Policy</span>
+            <select id="payment_policy_id" name="payment_policy_id">
+              <option value="">Nicht setzen</option>
+              {% for item in ebay_discovered_resources.payment_policies %}
+                <option value="{{ item.id }}" {% if ebay_effective_config.payment_policy_id == item.id %}selected{% endif %}>{{ item.name or item.id }} ({{ item.id }})</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="field field--full" for="fulfillment_policy_id">
+            <span>Fulfillment Policy</span>
+            <select id="fulfillment_policy_id" name="fulfillment_policy_id">
+              <option value="">Nicht setzen</option>
+              {% for item in ebay_discovered_resources.fulfillment_policies %}
+                <option value="{{ item.id }}" {% if ebay_effective_config.fulfillment_policy_id == item.id %}selected{% endif %}>{{ item.name or item.id }} ({{ item.id }})</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="field field--full" for="return_policy_id">
+            <span>Return Policy</span>
+            <select id="return_policy_id" name="return_policy_id">
+              <option value="">Nicht setzen</option>
+              {% for item in ebay_discovered_resources.return_policies %}
+                <option value="{{ item.id }}" {% if ebay_effective_config.return_policy_id == item.id %}selected{% endif %}>{{ item.name or item.id }} ({{ item.id }})</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="field field--full" for="merchant_location_key">
+            <span>Merchant Location</span>
+            <select id="merchant_location_key" name="merchant_location_key">
+              <option value="">Nicht setzen</option>
+              {% for item in ebay_discovered_resources.merchant_locations %}
+                <option value="{{ item.key }}" {% if ebay_effective_config.merchant_location_key == item.key %}selected{% endif %}>{{ item.name or item.key }} ({{ item.key }}){% if item.status %} – {{ item.status }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <button class="button button--secondary" type="submit">Defaults speichern</button>
+        </form>
+      {% else %}
+        <div class="notice notice--warning">
+          <h3>Noch keine eBay-Ressourcen geladen</h3>
+          <p>Lade zuerst die Policies und Merchant Locations des aktuell verbundenen eBay-Accounts. Falls danach nichts erscheint, existieren für diesen Account vermutlich noch keine passenden Policies oder keine Merchant Location.</p>
+          <form method="post" action="/integrations/ebay/locations/create-default" class="stack-md">
+            <button class="button button--secondary" type="submit">Standard-Merchant-Location anlegen</button>
+          </form>
+        </div>
+      {% endif %}
+    {% endif %}
   </article>
 
-  <article class="card">
-    <h2>Bereits umgesetzt</h2>
-    <ul>
-      <li>Mehrfach-Bildupload mit Vorschau</li>
-      <li>Lokale Bildspeicherung und Format-Normalisierung</li>
-      <li>Erzeugung eines neuen Drafts aus den Upload-Daten</li>
-    </ul>
-  </article>
+  <div class="landing-stack">
+    <article class="card card--accent">
+      <p class="eyebrow">Workflow</p>
+      <h2>Bereits umgesetzt</h2>
+      <ul class="feature-list">
+        <li>Mehrfach-Bildupload mit Vorschau</li>
+        <li>Lokale Bildspeicherung und Format-Normalisierung</li>
+        <li>Erzeugung eines neuen Drafts aus den Upload-Daten</li>
+      </ul>
+    </article>
+
+    <article class="card card--muted">
+      <p class="eyebrow">Live-Flow</p>
+      <h2>So läuft das Setup jetzt</h2>
+      <p>
+        Dieselbe Oberfläche verbindet den Account, lädt vorhandene eBay-Ressourcen, legt fehlende Defaults an
+        und speichert die passende Auswahl direkt für den Draft-Workflow.
+      </p>
+      <ul class="feature-list">
+        <li>Account verbinden und Ressourcen laden</li>
+        <li>Merchant Location und Business Policies bei Bedarf anlegen</li>
+        <li>Defaults speichern und danach Draft an eBay senden</li>
+      </ul>
+    </article>
+  </div>
 </section>
 {% endblock %}

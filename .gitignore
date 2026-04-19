@@ -7,4 +7,5 @@ __pycache__/
 !.env.example
 *.db
 data/*.db
+data/drafts
 .tmp-gh-issue-bodies/

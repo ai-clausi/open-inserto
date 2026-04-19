@@ -16,6 +16,22 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'data' / 'test.db'}")
+
+    # Make these UI tests deterministic even when a developer has local eBay
+    # credentials/policies configured via shell env or a repository .env file.
+    for env_var in (
+        "EBAY_CLIENT_ID",
+        "EBAY_CLIENT_SECRET",
+        "EBAY_RU_NAME",
+        "EBAY_ACCESS_TOKEN",
+        "EBAY_REFRESH_TOKEN",
+        "EBAY_PAYMENT_POLICY_ID",
+        "EBAY_FULFILLMENT_POLICY_ID",
+        "EBAY_RETURN_POLICY_ID",
+        "EBAY_MERCHANT_LOCATION_KEY",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
     get_settings.cache_clear()
     app = create_app()
     with TestClient(app) as test_client:
@@ -63,6 +79,7 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
     assert "Leichte Gebrauchsspuren" in detail.text
     assert "Testgerät" in detail.text
     assert "ready_for_review" in detail.text
+    assert "Kernangaben vollständig" in detail.text
     assert "Netzteil" in detail.text
     assert "Seriennummer verdeckt" in detail.text
     assert "Gerendertes Listing-HTML" in detail.text
@@ -135,7 +152,7 @@ def test_review_post_persists_changes_and_final_confirmation(client: TestClient)
             "category_suggestion": "Lampen",
             "hints": "leichte Kratzer",
             "confirm_fields": ["title", "condition", "description_html", "included_items"],
-            "action": "confirm",
+            "action": "save",
         },
         follow_redirects=False,
     )
@@ -143,7 +160,7 @@ def test_review_post_persists_changes_and_final_confirmation(client: TestClient)
     assert review_response.status_code == 303
 
     updated_detail = client.get(location)
-    assert "ready_for_marketplace" in updated_detail.text
+    assert "Review abgeschlossen" in updated_detail.text
     assert "Lampe aus Metall" in updated_detail.text
     assert "Desk 2000" in updated_detail.text
     assert "Schreibtischlampe" in updated_detail.text
@@ -176,4 +193,58 @@ def test_review_save_with_missing_core_fields_stays_in_needs_attention(client: T
     assert review_response.status_code == 303
     updated_detail = client.get(location)
     assert "needs_attention" in updated_detail.text
+    assert "Kernangaben noch prüfen" in updated_detail.text
     assert "Fehlende Kernfelder" in updated_detail.text
+    assert "Noch offen vor dem eBay-Schritt" in updated_detail.text
+
+
+def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Kleine Lampe", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    detail = client.get(location)
+
+    assert "Hinweise zum eBay-Draft" in detail.text
+    assert "Noch keine Preisschätzung vorhanden – für Auktionen wird aktuell trotzdem 1,00 € als Startpreis verwendet." in detail.text
+    assert "Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch." in detail.text
+    assert "Noch offen vor dem eBay-Schritt" in detail.text
+    assert "Payment Policy ist nicht konfiguriert" in detail.text
+    assert "Fulfillment Policy ist nicht konfiguriert" in detail.text
+    assert "Return Policy ist nicht konfiguriert" in detail.text
+    assert "Merchant Location ist nicht konfiguriert" in detail.text
+    assert '<button class="button button--primary" type="submit" disabled>eBay-Draft senden</button>' in detail.text
+
+
+def test_draft_detail_blocks_non_numeric_ebay_category_id(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Kleine Lampe", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    review_response = client.post(
+        f"{location}/review",
+        data={
+            "title": "Tischlampe",
+            "condition": "gut",
+            "description": "Kleine Lampe",
+            "included_items": "Kabel",
+            "category_suggestion": "Lampen",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+
+    assert review_response.status_code == 303
+    detail = client.get(location)
+    assert "eBay-Kategorie muss als numerische Category ID angegeben werden" in detail.text
+    assert '<button class="button button--primary" type="submit" disabled>eBay-Draft senden</button>' in detail.text

@@ -20,7 +20,7 @@ OPTIONAL_FIELDS: dict[str, str] = {
     "brand": "Marke",
     "model": "Modell",
     "subtitle": "Untertitel",
-    "category_suggestion": "Kategorie-Vorschlag",
+    "category_suggestion": "eBay-Kategorie-ID",
 }
 
 
@@ -28,7 +28,7 @@ def evaluate_review_state(draft: Draft) -> ReviewState:
     missing = get_missing_core_fields(draft)
     if is_blocked(draft):
         return "blocked"
-    if missing or get_confidence_notes(draft):
+    if missing:
         return "needs_attention"
     return "ready"
 
@@ -98,29 +98,26 @@ def update_draft_from_review(
     draft.source.notes = description.strip()
     draft.listing.description_html = render_listing_description(draft)
 
-    missing = get_missing_core_fields(draft)
-    state = evaluate_review_state(draft)
-
     review_metadata = {
         "confirmedFields": sorted({field for field in confirm_fields if field in CORE_FIELDS}),
         "reviewDecision": "confirmed" if action == "confirm" else "saved",
         "reviewedAt": datetime.now(timezone.utc).isoformat(),
     }
     draft.listing.attributes["review"] = review_metadata
+
+    missing = get_missing_core_fields(draft)
+    state = evaluate_review_state(draft)
     draft.workflow.missing_information = missing
 
-    if action == "confirm" and state != "blocked":
-        draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
-        draft.workflow.needs_review = False
-    elif state == "blocked":
+    if state == "blocked":
         draft.workflow.status = WorkflowStatus.BLOCKED
         draft.workflow.needs_review = True
     elif state == "needs_attention":
         draft.workflow.status = WorkflowStatus.NEEDS_ATTENTION
         draft.workflow.needs_review = True
     else:
-        draft.workflow.status = WorkflowStatus.READY_FOR_REVIEW
-        draft.workflow.needs_review = True
+        draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
+        draft.workflow.needs_review = False
 
     return draft
 
