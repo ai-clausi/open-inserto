@@ -65,6 +65,7 @@ body {
   color: white;
   position: relative;
   overflow: hidden;
+  isolation: isolate;
 }
 
 .hero-landing__copy::after {
@@ -75,6 +76,8 @@ body {
   height: 18rem;
   border-radius: 50%;
   background: rgba(240, 215, 170, 0.18);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .hero-landing__panel {
@@ -109,6 +112,8 @@ body {
   gap: 0.75rem;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin-top: 1.25rem;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-actions .button {
@@ -116,6 +121,8 @@ body {
   min-width: 0;
   margin-top: 0;
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-actions--split {
@@ -768,12 +775,23 @@ code {
 
 .draft-list-card h3,
 .draft-meta-list dd,
-.draft-meta-list dt {
+.draft-meta-list dt,
+.draft-list-card__support {
   margin: 0;
 }
 
 .draft-list-card h3 {
   overflow-wrap: anywhere;
+}
+
+.draft-list-card__intro {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.draft-list-card__support {
+  color: var(--text-soft);
+  font-size: 0.95rem;
 }
 
 .draft-list-card__top,
@@ -801,6 +819,10 @@ code {
   display: grid;
   gap: 0.8rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.draft-meta-list--compact {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .draft-meta-list div {

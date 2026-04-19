@@ -94,8 +94,11 @@ def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: P
     assert response.status_code == 200
     assert "draft_old" in response.text
     assert "draft_new" in response.text
+    assert "SKU OIN-OLD" in response.text
+    assert "SKU OIN-NEW" in response.text
     assert 'href="/drafts/draft_old"' in response.text
     assert 'href="/drafts/draft_new"' in response.text
+    assert "Weiter bearbeiten" in response.text
     assert "Bereit für eBay" in response.text
     assert response.text.index("draft_new") < response.text.index("draft_old")
     get_settings.cache_clear()
