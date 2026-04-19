@@ -8,7 +8,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.core.config import get_settings
+from app.drafts.identity import derive_sku
+from app.drafts.models import Draft, WorkflowStatus
+from app.drafts.repository import DraftRepository
 from app.main import create_app
+from app.marketplaces.ebay.auth import EbayAuthStore, EbayTokenData
+from app.marketplaces.ebay.configuration import EbayConfigStore
 
 
 @pytest.fixture()
@@ -194,7 +199,7 @@ def test_review_save_with_missing_core_fields_stays_in_needs_attention(client: T
     updated_detail = client.get(location)
     assert "needs_attention" in updated_detail.text
     assert "Kernangaben noch prüfen" in updated_detail.text
-    assert "Fehlende Kernfelder" in updated_detail.text
+    assert "Jetzt zuerst ergänzen" in updated_detail.text
     assert "Noch offen vor dem eBay-Schritt" in updated_detail.text
 
 
@@ -248,3 +253,105 @@ def test_draft_detail_blocks_non_numeric_ebay_category_id(client: TestClient):
     detail = client.get(location)
     assert "eBay-Kategorie muss als numerische Category ID angegeben werden" in detail.text
     assert '<button class="button button--primary" type="submit" disabled>eBay-Draft senden</button>' in detail.text
+
+
+def test_draft_detail_shows_primary_reconnect_action_when_auth_is_missing(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Kleine Lampe", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    detail = client.get(response.headers["location"])
+
+    assert "eBay muss neu verbunden werden" in detail.text
+    assert 'href="#ebay-connect"' in detail.text
+
+
+def test_draft_detail_shows_retry_result_for_retryable_ebay_error(client: TestClient):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = Draft(
+        id="draft_retry_case",
+        sku=derive_sku("draft_retry_case"),
+        source={
+            "images": [{
+                "id": "img_01",
+                "originalFilename": "front.jpg",
+                "storagePath": "/data/test/front.jpg",
+                "mimeType": "image/jpeg",
+                "order": 1,
+                "kind": "original",
+            }],
+            "notes": "Kleine Lampe",
+        },
+        listing={
+            "title": "Lampe",
+            "descriptionHtml": "<p>Kleine Lampe</p>",
+            "condition": "gut",
+            "categorySuggestion": "123",
+        },
+    )
+    draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
+    draft.workflow.needs_review = False
+    draft.marketplace.ebay.offer_data["lastError"] = "eBay timeout"
+    repository.save_draft(draft)
+
+    EbayAuthStore(settings.database_path).save_tokens(EbayTokenData(refresh_token="refresh-123"))
+    EbayConfigStore(settings.database_path).save_selected_configuration(
+        payment_policy_id="pay-1",
+        fulfillment_policy_id="ful-1",
+        return_policy_id="ret-1",
+        merchant_location_key="home",
+    )
+
+    detail = client.get(f"/drafts/{draft.id}")
+
+    assert "eBay hat den letzten Versuch abgelehnt" in detail.text
+    assert "Der lokale Draft ist erhalten geblieben" in detail.text
+    assert 'href="#ebay-send"' in detail.text
+
+
+def test_draft_detail_shows_success_result_with_technical_details_link(client: TestClient):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = Draft(
+        id="draft_success_case",
+        sku=derive_sku("draft_success_case"),
+        source={
+            "images": [{
+                "id": "img_01",
+                "originalFilename": "front.jpg",
+                "storagePath": "/data/test/front.jpg",
+                "mimeType": "image/jpeg",
+                "order": 1,
+                "kind": "original",
+            }],
+        },
+        listing={
+            "title": "Lampe",
+            "descriptionHtml": "<p>Kleine Lampe</p>",
+            "condition": "gut",
+            "categorySuggestion": "123",
+        },
+    )
+    draft.workflow.status = WorkflowStatus.OFFER_CREATED
+    draft.workflow.needs_review = False
+    draft.marketplace.ebay.offer_id = "offer-123"
+    repository.save_draft(draft)
+
+    EbayAuthStore(settings.database_path).save_tokens(EbayTokenData(refresh_token="refresh-123"))
+    EbayConfigStore(settings.database_path).save_selected_configuration(
+        payment_policy_id="pay-1",
+        fulfillment_policy_id="ful-1",
+        return_policy_id="ret-1",
+        merchant_location_key="home",
+    )
+
+    detail = client.get(f"/drafts/{draft.id}")
+
+    assert "eBay-Draft erfolgreich erstellt" in detail.text
+    assert 'href="#technical-details"' in detail.text
+    assert "Technische Details anzeigen" in detail.text

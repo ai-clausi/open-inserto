@@ -460,6 +460,24 @@ code {
   margin-bottom: 1rem;
 }
 
+.detail-disclosure {
+  margin-top: 1rem;
+  border-radius: 20px;
+  background: rgba(31, 111, 95, 0.04);
+  border: 1px solid rgba(31, 111, 95, 0.08);
+  padding: 0.85rem 1rem;
+}
+
+.detail-disclosure summary {
+  cursor: pointer;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.detail-disclosure[open] summary {
+  margin-bottom: 0.8rem;
+}
+
 .alert {
   border-radius: 18px;
   padding: 1rem 1.2rem;

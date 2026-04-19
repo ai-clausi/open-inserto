@@ -5,12 +5,13 @@
 {% block content %}
 <section class="hero hero--landing hero--detail">
   <div class="hero-landing__copy">
-    <p class="eyebrow">Nutzer-Review</p>
-    <h1>{{ draft.id }}</h1>
-    <p class="hero-lead">
-      Ein Draft, ein klarer Zustand: Review vervollständigen, eBay-Setup prüfen und erst dann sauber senden.
-    </p>
-    <p class="hero-support">SKU: <strong>{{ draft.sku }}</strong></p>
+    <p class="eyebrow">Ergebnis & nächster Schritt</p>
+    <h1>{{ result_summary.headline }}</h1>
+    <p class="hero-lead">{{ result_summary.body }}</p>
+    <p class="hero-support">Draft-ID: <strong>{{ draft.id }}</strong> · SKU: <strong>{{ draft.sku }}</strong></p>
+    <div class="hero-actions">
+      <a class="button button--primary" href="#{{ result_summary.primary_action_target }}">{{ result_summary.primary_action_label }}</a>
+    </div>
   </div>
 
   <aside class="hero-landing__panel">
@@ -38,7 +39,7 @@
 
 <section class="detail-shell">
   <section class="detail-main">
-    <article class="card card--config">
+    <article class="card card--config" id="review-form">
       <div class="section-head">
         <div>
           <p class="eyebrow">Reviewstatus</p>
@@ -49,17 +50,10 @@
         </div>
       </div>
 
-      {% if show_technical_workflow_hint %}
-        <div class="notice notice--info">
-          <h3>Technischer Status</h3>
-          <p>Interner Workflow-Status: <strong>{{ draft.workflow.status }}</strong></p>
-          <p>Der technische Status dient nur der Systemdiagnose. Maßgeblich für den nächsten Schritt sind oben die Bereiche „Kernangaben“ und „eBay-Draft“.</p>
-        </div>
-      {% endif %}
-
       {% if missing_core_fields %}
         <div class="notice notice--warning">
-          <h3>Fehlende Kernfelder</h3>
+          <h3>Jetzt zuerst ergänzen</h3>
+          <p>Diese Kernfelder blockieren den nächsten sinnvollen Schritt und sollten vor dem Marketplace-Teil vervollständigt werden.</p>
           <ul>
             {% for item in missing_core_fields %}
               <li>{{ item }}</li>
@@ -72,15 +66,29 @@
         </div>
       {% endif %}
 
-      {% if confidence_notes %}
-        <div class="notice notice--info">
-          <h3>Unsichere Angaben</h3>
-          <ul>
-            {% for item in confidence_notes %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
+      {% if confidence_notes or show_technical_workflow_hint %}
+        <details class="detail-disclosure">
+          <summary>Diagnose und unsichere Angaben anzeigen</summary>
+
+          {% if confidence_notes %}
+            <div class="notice notice--info">
+              <h3>Unsichere Angaben</h3>
+              <ul>
+                {% for item in confidence_notes %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          {% if show_technical_workflow_hint %}
+            <div class="notice notice--info">
+              <h3>Technischer Status</h3>
+              <p>Interner Workflow-Status: <strong>{{ draft.workflow.status }}</strong></p>
+              <p>Der technische Status dient nur der Systemdiagnose. Maßgeblich für den nächsten Schritt sind oben die Bereiche „Kernangaben“ und „eBay-Draft“.</p>
+            </div>
+          {% endif %}
+        </details>
       {% endif %}
     </article>
 
@@ -109,22 +117,16 @@
       <div class="section-head">
         <div>
           <p class="eyebrow">Marketplace</p>
-          <h2>eBay-Status</h2>
+          <h2>Nächster eBay-Schritt</h2>
         </div>
         <div class="status-chip {% if not ebay_action_disabled and ebay_auth_connected %}status-chip--success{% else %}status-chip--muted{% endif %}">
           {{ marketplace_status_label }}
         </div>
       </div>
-      <div class="default-grid default-grid--single">
-        <div class="default-card"><span>Modus</span><strong>{{ ebay_mode }}</strong></div>
-        <div class="default-card"><span>Autorisierung</span><strong>{{ 'Verbunden' if ebay_auth_connected else 'Nicht verbunden' }}</strong></div>
-        <div class="default-card"><span>Merchant Location</span><strong>{{ ebay_effective_config.merchant_location_key or '–' }}</strong></div>
-        <div class="default-card"><span>Payment Policy</span><strong>{{ ebay_effective_config.payment_policy_id or '–' }}</strong></div>
-        <div class="default-card"><span>Fulfillment Policy</span><strong>{{ ebay_effective_config.fulfillment_policy_id or '–' }}</strong></div>
-        <div class="default-card"><span>Return Policy</span><strong>{{ ebay_effective_config.return_policy_id or '–' }}</strong></div>
-        <div class="default-card"><span>Inventory Item Key</span><strong>{{ draft.marketplace.ebay.inventory_item_key or '–' }}</strong></div>
-        <div class="default-card"><span>Offer ID</span><strong>{{ draft.marketplace.ebay.offer_id or '–' }}</strong></div>
-        <div class="default-card"><span>Bild-URLs</span><strong>{{ draft.marketplace.ebay.image_urls | length }}</strong></div>
+      <div class="notice {% if result_summary.tone == 'success' %}notice--success{% elif result_summary.tone == 'error' %}notice--error{% elif result_summary.tone == 'warning' %}notice--warning{% else %}notice--info{% endif %}">
+        <h3>Was gerade wichtig ist</h3>
+        <p><strong>{{ result_summary.headline }}</strong></p>
+        <p>{{ result_summary.body }}</p>
       </div>
 
       {% set ebay_error = draft.marketplace.ebay.offer_data.get('lastError') %}
@@ -139,20 +141,24 @@
       {% endif %}
 
       {% if marketplace_notes %}
-        <div class="notice notice--info">
-          <h3>Hinweise zum eBay-Draft</h3>
-          <p>Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch.</p>
-          <ul>
-            {% for item in marketplace_notes %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
+        <details class="detail-disclosure">
+          <summary>Hinweise zum eBay-Draft anzeigen</summary>
+          <div class="notice notice--info">
+            <h3>Hinweise zum eBay-Draft</h3>
+            <p>Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch.</p>
+            <ul>
+              {% for item in marketplace_notes %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </details>
       {% endif %}
 
       {% if marketplace_readiness_errors %}
         <div class="notice notice--warning">
           <h3>Noch offen vor dem eBay-Schritt</h3>
+          <p>Solange diese Punkte offen sind, bleibt der eBay-Transfer deaktiviert.</p>
           <ul>
             {% for item in marketplace_readiness_errors %}
               <li>{{ item }}</li>
@@ -162,16 +168,31 @@
       {% endif %}
 
       {% if not ebay_auth_connected %}
-        <form method="post" action="/integrations/ebay/connect" class="stack-md">
+        <form method="post" action="/integrations/ebay/connect" class="stack-md" id="ebay-connect">
           <p>Für den eBay-Draft wird eine gültige OAuth-Verbindung benötigt. Wenn die Verbindung abgelaufen oder ungültig ist, bitte hier erneut autorisieren.</p>
           <button class="button button--secondary" type="submit">eBay erneut verbinden</button>
         </form>
       {% endif %}
 
-      <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md">
+      <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md" id="ebay-send">
         <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer. Nach einem eBay-Fehler kannst du den Schritt erneut ausführen, sobald die offenen Hinweise behoben sind.</p>
         <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Draft senden</button>
       </form>
+
+      <details class="detail-disclosure" id="technical-details">
+        <summary>Technische Details anzeigen</summary>
+        <div class="default-grid default-grid--single">
+          <div class="default-card"><span>Modus</span><strong>{{ ebay_mode }}</strong></div>
+          <div class="default-card"><span>Autorisierung</span><strong>{{ 'Verbunden' if ebay_auth_connected else 'Nicht verbunden' }}</strong></div>
+          <div class="default-card"><span>Merchant Location</span><strong>{{ ebay_effective_config.merchant_location_key or '–' }}</strong></div>
+          <div class="default-card"><span>Payment Policy</span><strong>{{ ebay_effective_config.payment_policy_id or '–' }}</strong></div>
+          <div class="default-card"><span>Fulfillment Policy</span><strong>{{ ebay_effective_config.fulfillment_policy_id or '–' }}</strong></div>
+          <div class="default-card"><span>Return Policy</span><strong>{{ ebay_effective_config.return_policy_id or '–' }}</strong></div>
+          <div class="default-card"><span>Inventory Item Key</span><strong>{{ draft.marketplace.ebay.inventory_item_key or '–' }}</strong></div>
+          <div class="default-card"><span>Offer ID</span><strong>{{ draft.marketplace.ebay.offer_id or '–' }}</strong></div>
+          <div class="default-card"><span>Bild-URLs</span><strong>{{ draft.marketplace.ebay.image_urls | length }}</strong></div>
+        </div>
+      </details>
     </article>
   </aside>
 </section>
