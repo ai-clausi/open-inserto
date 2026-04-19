@@ -57,6 +57,69 @@ def build_context(request: Request, **extra):
     return context
 
 
+def build_draft_result_summary(
+    *,
+    draft,
+    review_state: str,
+    ebay_auth_connected: bool,
+    marketplace_readiness_errors: list[str],
+) -> dict[str, object]:
+    ebay_error = str(draft.marketplace.ebay.offer_data.get("lastError") or "").strip()
+
+    if draft.marketplace.ebay.offer_id:
+        return {
+            "headline": "eBay-Draft erfolgreich erstellt",
+            "body": "Der Draft wurde an eBay übertragen. Wenn du magst, kannst du jetzt nur noch kurz die technischen Details prüfen.",
+            "tone": "success",
+            "primary_action_label": "Weiter prüfen",
+            "primary_action_target": "technical-details",
+        }
+
+    if not ebay_auth_connected:
+        return {
+            "headline": "eBay muss neu verbunden werden",
+            "body": "Die Verbindung zu eBay fehlt oder ist nicht mehr gültig. Danach kannst du den Draft direkt erneut senden.",
+            "tone": "warning",
+            "primary_action_label": "eBay erneut verbinden",
+            "primary_action_target": "ebay-connect",
+        }
+
+    if marketplace_readiness_errors:
+        return {
+            "headline": "Es fehlen noch Angaben",
+            "body": "Bevor der eBay-Schritt laufen kann, sollte der Draft noch an den markierten Punkten vervollständigt werden.",
+            "tone": "warning",
+            "primary_action_label": "Angaben ergänzen",
+            "primary_action_target": "review-form",
+        }
+
+    if ebay_error:
+        return {
+            "headline": "eBay hat den letzten Versuch abgelehnt",
+            "body": "Der lokale Draft ist erhalten geblieben. Du kannst den Schritt nach der kurzen Prüfung direkt erneut ausführen.",
+            "tone": "error",
+            "primary_action_label": "Erneut senden",
+            "primary_action_target": "ebay-send",
+        }
+
+    if review_state != "ready":
+        return {
+            "headline": "Bitte kurz prüfen",
+            "body": "Die Kernangaben sind noch nicht vollständig bestätigt. Danach kann der Marketplace-Schritt folgen.",
+            "tone": "info",
+            "primary_action_label": "Review öffnen",
+            "primary_action_target": "review-form",
+        }
+
+    return {
+        "headline": "Bereit für den nächsten Schritt",
+        "body": "Der Draft wirkt vollständig. Du kannst jetzt mit einem Klick den eBay-Draft anstoßen.",
+        "tone": "info",
+        "primary_action_label": "eBay-Draft senden",
+        "primary_action_target": "ebay-send",
+    }
+
+
 @router.get("/health")
 def health() -> dict[str, str]:
     settings = get_settings()
@@ -164,12 +227,22 @@ def draft_detail(request: Request, draft_id: str):
 
     review_state = evaluate_review_state(draft)
     review_status_label = "Review abgeschlossen" if not draft.workflow.needs_review else "Review noch offen"
-    if not marketplace_readiness_errors:
+    if draft.marketplace.ebay.offer_id:
+        marketplace_status_label = "Erfolgreich erstellt"
+    elif not marketplace_readiness_errors and draft.marketplace.ebay.offer_data.get("lastError"):
+        marketplace_status_label = "Retry möglich"
+    elif not marketplace_readiness_errors:
         marketplace_status_label = "Bereit für eBay-Draft"
     elif any("ist nicht konfiguriert" in item for item in marketplace_readiness_errors):
         marketplace_status_label = "Blockiert durch Konfiguration"
     else:
         marketplace_status_label = "Noch Angaben prüfen"
+    result_summary = build_draft_result_summary(
+        draft=draft,
+        review_state=review_state,
+        ebay_auth_connected=ebay_auth_connected,
+        marketplace_readiness_errors=marketplace_readiness_errors,
+    )
 
     return templates.TemplateResponse(
         request,
@@ -194,6 +267,7 @@ def draft_detail(request: Request, draft_id: str):
             core_fields=CORE_FIELDS,
             optional_fields=OPTIONAL_FIELDS,
             ebay_auth_connected=ebay_auth_connected,
+            result_summary=result_summary,
         ),
     )
 
