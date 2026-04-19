@@ -18,7 +18,4 @@ def test_get_settings_reads_env_file_from_project_dir_not_cwd(tmp_path: Path, mo
     settings = get_settings()
 
     assert settings.project_dir == project_dir.resolve()
-    assert settings.ebay_payment_policy_id is None
-    assert settings.ebay_auth_callback_url is None
-
     get_settings.cache_clear()

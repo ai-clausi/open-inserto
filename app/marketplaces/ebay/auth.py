@@ -13,6 +13,12 @@ SCOPES = (
     "https://api.ebay.com/oauth/api_scope/sell.inventory "
     "https://api.ebay.com/oauth/api_scope/sell.account"
 )
+TOKEN_KEYS = (
+    "ebay_access_token",
+    "ebay_refresh_token",
+    "ebay_token_expires_in",
+    "ebay_token_type",
+)
 
 
 @dataclass(slots=True)
@@ -32,12 +38,7 @@ class EbayAuthStore:
             with get_connection(self.database_path) as connection:
                 rows = connection.execute(
                     "SELECT key, value FROM app_meta WHERE key IN (?, ?, ?, ?)",
-                    (
-                        "ebay_access_token",
-                        "ebay_refresh_token",
-                        "ebay_token_expires_in",
-                        "ebay_token_type",
-                    ),
+                    TOKEN_KEYS,
                 ).fetchall()
         except sqlite3.OperationalError:
             rows = []
@@ -48,7 +49,7 @@ class EbayAuthStore:
             access_token=values.get("ebay_access_token"),
             refresh_token=values.get("ebay_refresh_token"),
             expires_in=int(expires_in) if expires_in else None,
-            token_type=values.get("ebay_token_type") or "Bearer",
+            token_type=normalize_token_type(values.get("ebay_token_type")),
         )
 
     def save_tokens(self, token_data: EbayTokenData) -> None:
@@ -56,7 +57,7 @@ class EbayAuthStore:
             "ebay_access_token": token_data.access_token or "",
             "ebay_refresh_token": token_data.refresh_token or "",
             "ebay_token_expires_in": "" if token_data.expires_in is None else str(token_data.expires_in),
-            "ebay_token_type": token_data.token_type,
+            "ebay_token_type": normalize_token_type(token_data.token_type),
         }
         with get_connection(self.database_path) as connection:
             connection.executemany(
@@ -99,6 +100,29 @@ class EbayAuthStore:
         with get_connection(self.database_path) as connection:
             connection.execute("DELETE FROM app_meta WHERE key = ?", ("ebay_oauth_state",))
             connection.commit()
+
+    def clear_tokens(self) -> None:
+        try:
+            with get_connection(self.database_path) as connection:
+                connection.executemany("DELETE FROM app_meta WHERE key = ?", [(key,) for key in TOKEN_KEYS])
+                connection.commit()
+        except sqlite3.OperationalError:
+            return
+
+
+def has_usable_auth_tokens(token_data: EbayTokenData) -> bool:
+    return bool(token_data.refresh_token)
+
+
+def normalize_token_type(token_type: str | None) -> str:
+    value = (token_type or "").strip()
+    if not value:
+        return "Bearer"
+    if value.lower() == "bearer":
+        return "Bearer"
+    if value.lower() == "user access token":
+        return "Bearer"
+    return "Bearer"
 
 
 def build_auth_connect_url(settings: Settings, state: str) -> str:

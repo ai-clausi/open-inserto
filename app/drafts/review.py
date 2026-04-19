@@ -20,7 +20,7 @@ OPTIONAL_FIELDS: dict[str, str] = {
     "brand": "Marke",
     "model": "Modell",
     "subtitle": "Untertitel",
-    "category_suggestion": "Kategorie-Vorschlag",
+    "category_suggestion": "eBay-Kategorie-ID",
 }
 
 

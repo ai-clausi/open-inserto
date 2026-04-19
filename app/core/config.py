@@ -24,13 +24,6 @@ class Settings(BaseSettings):
     ebay_client_id: str | None = None
     ebay_client_secret: str | None = None
     ebay_ru_name: str | None = None
-    ebay_auth_callback_url: str | None = None
-    ebay_access_token: str | None = None
-    ebay_refresh_token: str | None = None
-    ebay_payment_policy_id: str | None = None
-    ebay_fulfillment_policy_id: str | None = None
-    ebay_return_policy_id: str | None = None
-    ebay_merchant_location_key: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

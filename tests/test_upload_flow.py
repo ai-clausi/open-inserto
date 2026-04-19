@@ -218,4 +218,33 @@ def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client
     assert "Fulfillment Policy ist nicht konfiguriert" in detail.text
     assert "Return Policy ist nicht konfiguriert" in detail.text
     assert "Merchant Location ist nicht konfiguriert" in detail.text
-    assert '<button class="button button--primary" type="submit" disabled>eBay-Draft erstellen</button>' in detail.text
+    assert '<button class="button button--primary" type="submit" disabled>eBay-Draft senden</button>' in detail.text
+
+
+def test_draft_detail_blocks_non_numeric_ebay_category_id(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Kleine Lampe", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    review_response = client.post(
+        f"{location}/review",
+        data={
+            "title": "Tischlampe",
+            "condition": "gut",
+            "description": "Kleine Lampe",
+            "included_items": "Kabel",
+            "category_suggestion": "Lampen",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+
+    assert review_response.status_code == 303
+    detail = client.get(location)
+    assert "eBay-Kategorie muss als numerische Category ID angegeben werden" in detail.text
+    assert '<button class="button button--primary" type="submit" disabled>eBay-Draft senden</button>' in detail.text

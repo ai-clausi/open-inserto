@@ -1,21 +1,34 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app.core.config import Settings
 from app.drafts.models import Draft, WorkflowStatus
 from app.drafts.repository import DraftRepository
 from app.drafts.workflow import transition_draft
+from app.marketplaces.ebay.auth import has_usable_auth_tokens
+from app.marketplaces.ebay.configuration import EbayConfigStore, validate_config_against_resources
 from app.marketplaces.ebay.client import EbayApiError, EbayAuthError, EbayClient, EbayValidationError
 from app.marketplaces.ebay.mapping import build_inventory_item_payload, build_offer_payload
 from app.marketplaces.ebay.validation import MarketplaceValidationError, validate_marketplace_ready
 
+logger = logging.getLogger(__name__)
+
 
 class EbayMarketplaceService:
-    def __init__(self, *, settings: Settings, repository: DraftRepository, client: EbayClient | None = None):
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        repository: DraftRepository,
+        client: EbayClient | None = None,
+        config_store: EbayConfigStore | None = None,
+    ):
         self.settings = settings
         self.repository = repository
         self.client = client or EbayClient(settings)
+        self.config_store = config_store or EbayConfigStore(settings.database_path)
 
     def create_unpublished_offer_for_draft(self, draft_id: str) -> Draft:
         draft = self.repository.get_draft(draft_id)
@@ -23,21 +36,32 @@ class EbayMarketplaceService:
             raise KeyError(f"Draft not found: {draft_id}")
 
         try:
-            auth_connected = bool(self.settings.ebay_refresh_token or self.settings.ebay_access_token)
+            logger.debug("Starting eBay draft creation: draft_id=%s sku=%s", draft.id, draft.sku)
+            auth_connected = False
             if isinstance(self.client, EbayClient) and self.client.auth_store is not None:
                 tokens = self.client.auth_store.get_tokens()
-                auth_connected = auth_connected or bool(tokens.refresh_token or tokens.access_token)
+                auth_connected = has_usable_auth_tokens(tokens)
             elif not isinstance(self.client, EbayClient):
                 auth_connected = True
 
-            validate_marketplace_ready(draft, self.settings, auth_connected=auth_connected)
+            effective_config = self.config_store.get_effective_configuration()
+            validate_marketplace_ready(draft, effective_config, auth_connected=auth_connected)
             access_token = self.client.get_access_token()
+            resources = self.client.get_account_resources(access_token)
+            self.config_store.save_discovered_resources(resources)
+            config_errors = validate_config_against_resources(
+                effective_config,
+                resources,
+                self.settings.ebay_marketplace_id,
+            )
+            if config_errors:
+                raise MarketplaceValidationError(config_errors)
             draft.marketplace.ebay.image_urls = self._upload_images(draft, access_token)
 
             inventory_payload = build_inventory_item_payload(draft, self.settings)
             self.client.create_or_replace_inventory_item(access_token, sku=draft.sku, payload=inventory_payload)
 
-            offer_payload = build_offer_payload(draft, self.settings)
+            offer_payload = build_offer_payload(draft, self.settings, effective_config)
             offer_response = self.client.create_offer(access_token, offer_payload)
 
             draft.marketplace.ebay.inventory_item_key = draft.sku
@@ -47,15 +71,28 @@ class EbayMarketplaceService:
             transition_draft(draft, WorkflowStatus.OFFER_CREATED)
             draft.workflow.missing_information = []
             self.repository.save_draft(draft)
+            logger.info("eBay draft creation succeeded: draft_id=%s offer_id=%s", draft.id, draft.marketplace.ebay.offer_id)
             return draft
         except MarketplaceValidationError as exc:
+            logger.warning("eBay draft blocked by validation: draft_id=%s errors=%s", draft.id, exc.errors)
             draft.workflow.status = WorkflowStatus.BLOCKED
             draft.workflow.missing_information = exc.errors
             draft.marketplace.ebay.offer_data["lastError"] = str(exc)
             self.repository.save_draft(draft)
             return draft
-        except (EbayAuthError, EbayValidationError, EbayApiError) as exc:
-            draft.workflow.status = WorkflowStatus.ERROR
+        except EbayAuthError as exc:
+            logger.warning("eBay draft failed due to auth error: draft_id=%s error=%s", draft.id, exc)
+            if isinstance(self.client, EbayClient) and self.client.auth_store is not None:
+                self.client.auth_store.clear_tokens()
+            draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
+            draft.workflow.missing_information = []
+            draft.marketplace.ebay.offer_data["lastError"] = str(exc)
+            self.repository.save_draft(draft)
+            return draft
+        except (EbayValidationError, EbayApiError) as exc:
+            logger.warning("eBay draft failed due to API error: draft_id=%s error=%s", draft.id, exc)
+            draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
+            draft.workflow.missing_information = []
             draft.marketplace.ebay.offer_data["lastError"] = str(exc)
             self.repository.save_draft(draft)
             return draft

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.config import Settings
 from app.drafts.models import Draft, WorkflowStatus
+from app.marketplaces.ebay.configuration import EffectiveEbayConfiguration
 
 
 def collect_marketplace_notes(draft: Draft) -> list[str]:
@@ -27,7 +27,7 @@ class MarketplaceValidationError(Exception):
 
 def collect_marketplace_readiness_errors(
     draft: Draft,
-    settings: Settings,
+    config: EffectiveEbayConfiguration,
     *,
     include_workflow_status: bool = True,
     auth_connected: bool | None = None,
@@ -44,15 +44,17 @@ def collect_marketplace_readiness_errors(
         errors.append("Zustand fehlt")
     if not draft.listing.category_suggestion.strip():
         errors.append("Kategorie fehlt")
+    elif not draft.listing.category_suggestion.strip().isdigit():
+        errors.append("eBay-Kategorie muss als numerische Category ID angegeben werden")
     if not draft.source.images:
         errors.append("Mindestens ein Bild ist erforderlich")
 
     required_settings = {
-        "eBay-Zugang": auth_connected if auth_connected is not None else (settings.ebay_refresh_token or settings.ebay_access_token),
-        "Payment Policy": settings.ebay_payment_policy_id,
-        "Fulfillment Policy": settings.ebay_fulfillment_policy_id,
-        "Return Policy": settings.ebay_return_policy_id,
-        "Merchant Location": settings.ebay_merchant_location_key,
+        "eBay-Zugang": auth_connected if auth_connected is not None else False,
+        "Payment Policy": config.payment_policy_id,
+        "Fulfillment Policy": config.fulfillment_policy_id,
+        "Return Policy": config.return_policy_id,
+        "Merchant Location": config.merchant_location_key,
     }
     for label, value in required_settings.items():
         if not value:
@@ -64,7 +66,7 @@ def collect_marketplace_readiness_errors(
     return errors
 
 
-def validate_marketplace_ready(draft: Draft, settings: Settings, *, auth_connected: bool | None = None) -> None:
-    errors = collect_marketplace_readiness_errors(draft, settings, auth_connected=auth_connected)
+def validate_marketplace_ready(draft: Draft, config: EffectiveEbayConfiguration, *, auth_connected: bool | None = None) -> None:
+    errors = collect_marketplace_readiness_errors(draft, config, auth_connected=auth_connected)
     if errors:
         raise MarketplaceValidationError(errors)

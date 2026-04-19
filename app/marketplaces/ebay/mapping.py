@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from app.marketplaces.ebay.configuration import EffectiveEbayConfiguration
 from app.core.config import Settings
 from app.drafts.models import Draft
 
 
 DEFAULT_AUCTION_START_PRICE = 1.0
+DEFAULT_AUCTION_DURATION = "DAYS_7"
 
 
 CONDITION_MAP = {
@@ -40,19 +42,19 @@ def build_inventory_item_payload(draft: Draft, settings: Settings) -> dict:
     }
 
 
-def build_offer_payload(draft: Draft, settings: Settings) -> dict:
+def build_offer_payload(draft: Draft, settings: Settings, config: EffectiveEbayConfiguration) -> dict:
     price = draft.listing.price_suggestion if draft.listing.price_suggestion is not None else DEFAULT_AUCTION_START_PRICE
     return {
         "sku": draft.sku,
         "marketplaceId": settings.ebay_marketplace_id,
         "format": "AUCTION",
-        "availableQuantity": 1,
+        "listingDuration": DEFAULT_AUCTION_DURATION,
         "categoryId": draft.listing.category_suggestion.strip(),
-        "merchantLocationKey": settings.ebay_merchant_location_key,
+        "merchantLocationKey": config.merchant_location_key,
         "listingPolicies": {
-            "paymentPolicyId": settings.ebay_payment_policy_id,
-            "fulfillmentPolicyId": settings.ebay_fulfillment_policy_id,
-            "returnPolicyId": settings.ebay_return_policy_id,
+            "paymentPolicyId": config.payment_policy_id,
+            "fulfillmentPolicyId": config.fulfillment_policy_id,
+            "returnPolicyId": config.return_policy_id,
         },
         "pricingSummary": {
             "auctionStartPrice": {

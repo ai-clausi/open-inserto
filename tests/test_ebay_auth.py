@@ -19,7 +19,6 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("EBAY_CLIENT_ID", "client-123")
     monkeypatch.setenv("EBAY_CLIENT_SECRET", "secret-123")
     monkeypatch.setenv("EBAY_RU_NAME", "open-inserto-sandbox")
-    monkeypatch.setenv("EBAY_AUTH_CALLBACK_URL", "http://testserver/integrations/ebay/callback")
     get_settings.cache_clear()
     app = create_app()
     with TestClient(app) as test_client:
@@ -41,17 +40,28 @@ def test_callback_exchanges_code_and_persists_tokens(client: TestClient):
     auth_store = EbayAuthStore(settings.database_path)
     state = auth_store.issue_state()
 
-    transport = httpx.MockTransport(
-        lambda request: httpx.Response(
-            200,
-            json={
-                "access_token": "access-1",
-                "refresh_token": "refresh-1",
-                "expires_in": 7200,
-                "token_type": "Bearer",
-            },
-        )
-    )
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/identity/v1/oauth2/token"):
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "access-1",
+                    "refresh_token": "refresh-1",
+                    "expires_in": 7200,
+                    "token_type": "Bearer",
+                },
+            )
+        if request.url.path.endswith("/sell/account/v1/payment_policy"):
+            return httpx.Response(200, json={"paymentPolicies": [{"paymentPolicyId": "pay-1", "name": "Payment"}]})
+        if request.url.path.endswith("/sell/account/v1/fulfillment_policy"):
+            return httpx.Response(200, json={"fulfillmentPolicies": [{"fulfillmentPolicyId": "ful-1", "name": "Fulfillment"}]})
+        if request.url.path.endswith("/sell/account/v1/return_policy"):
+            return httpx.Response(200, json={"returnPolicies": [{"returnPolicyId": "ret-1", "name": "Return"}]})
+        if request.url.path.endswith("/sell/inventory/v1/location"):
+            return httpx.Response(200, json={"locations": [{"merchantLocationKey": "home", "name": "Warehouse", "merchantLocationStatus": "ENABLED"}]})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    transport = httpx.MockTransport(handler)
     fake_ebay_client = EbayClient(settings, client=httpx.Client(transport=transport), auth_store=auth_store)
 
     from app.web import routes
@@ -69,6 +79,15 @@ def test_callback_exchanges_code_and_persists_tokens(client: TestClient):
     tokens = auth_store.get_tokens()
     assert tokens.access_token == "access-1"
     assert tokens.refresh_token == "refresh-1"
+    assert 'value="pay-1"' in response.text
+
+
+def test_callback_error_response_uses_utf8_json(client: TestClient):
+    response = client.get("/integrations/ebay/callback")
+
+    assert response.status_code == 400
+    assert response.headers["content-type"] == "application/json; charset=utf-8"
+    assert response.text == '{"detail":"Ungültiger eBay OAuth-Status"}'
 
 
 def test_refresh_token_from_store_is_used_for_access_token(tmp_path: Path):
