@@ -50,17 +50,10 @@
         </div>
       </div>
 
-      {% if show_technical_workflow_hint %}
-        <div class="notice notice--info">
-          <h3>Technischer Status</h3>
-          <p>Interner Workflow-Status: <strong>{{ draft.workflow.status }}</strong></p>
-          <p>Der technische Status dient nur der Systemdiagnose. Maßgeblich für den nächsten Schritt sind oben die Bereiche „Kernangaben“ und „eBay-Draft“.</p>
-        </div>
-      {% endif %}
-
       {% if missing_core_fields %}
         <div class="notice notice--warning">
-          <h3>Fehlende Kernfelder</h3>
+          <h3>Jetzt zuerst ergänzen</h3>
+          <p>Diese Kernfelder blockieren den nächsten sinnvollen Schritt und sollten vor dem Marketplace-Teil vervollständigt werden.</p>
           <ul>
             {% for item in missing_core_fields %}
               <li>{{ item }}</li>
@@ -73,15 +66,29 @@
         </div>
       {% endif %}
 
-      {% if confidence_notes %}
-        <div class="notice notice--info">
-          <h3>Unsichere Angaben</h3>
-          <ul>
-            {% for item in confidence_notes %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
+      {% if confidence_notes or show_technical_workflow_hint %}
+        <details class="detail-disclosure">
+          <summary>Diagnose und unsichere Angaben anzeigen</summary>
+
+          {% if confidence_notes %}
+            <div class="notice notice--info">
+              <h3>Unsichere Angaben</h3>
+              <ul>
+                {% for item in confidence_notes %}
+                  <li>{{ item }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          {% if show_technical_workflow_hint %}
+            <div class="notice notice--info">
+              <h3>Technischer Status</h3>
+              <p>Interner Workflow-Status: <strong>{{ draft.workflow.status }}</strong></p>
+              <p>Der technische Status dient nur der Systemdiagnose. Maßgeblich für den nächsten Schritt sind oben die Bereiche „Kernangaben“ und „eBay-Draft“.</p>
+            </div>
+          {% endif %}
+        </details>
       {% endif %}
     </article>
 
@@ -110,7 +117,7 @@
       <div class="section-head">
         <div>
           <p class="eyebrow">Marketplace</p>
-          <h2>eBay-Status</h2>
+          <h2>Nächster eBay-Schritt</h2>
         </div>
         <div class="status-chip {% if not ebay_action_disabled and ebay_auth_connected %}status-chip--success{% else %}status-chip--muted{% endif %}">
           {{ marketplace_status_label }}
@@ -134,20 +141,24 @@
       {% endif %}
 
       {% if marketplace_notes %}
-        <div class="notice notice--info">
-          <h3>Hinweise zum eBay-Draft</h3>
-          <p>Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch.</p>
-          <ul>
-            {% for item in marketplace_notes %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
+        <details class="detail-disclosure">
+          <summary>Hinweise zum eBay-Draft anzeigen</summary>
+          <div class="notice notice--info">
+            <h3>Hinweise zum eBay-Draft</h3>
+            <p>Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch.</p>
+            <ul>
+              {% for item in marketplace_notes %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </details>
       {% endif %}
 
       {% if marketplace_readiness_errors %}
         <div class="notice notice--warning">
           <h3>Noch offen vor dem eBay-Schritt</h3>
+          <p>Solange diese Punkte offen sind, bleibt der eBay-Transfer deaktiviert.</p>
           <ul>
             {% for item in marketplace_readiness_errors %}
               <li>{{ item }}</li>
@@ -168,7 +179,7 @@
         <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Draft senden</button>
       </form>
 
-      <details id="technical-details">
+      <details class="detail-disclosure" id="technical-details">
         <summary>Technische Details anzeigen</summary>
         <div class="default-grid default-grid--single">
           <div class="default-card"><span>Modus</span><strong>{{ ebay_mode }}</strong></div>
