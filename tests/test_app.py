@@ -65,6 +65,22 @@ def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: P
         {
             "id": "draft_old",
             "sku": "OIN-OLD",
+            "listing": {
+                "title": "Vintage Kamera",
+                "condition": "Gebraucht, guter Zustand",
+            },
+            "source": {
+                "images": [
+                    {
+                        "id": "img-old",
+                        "originalFilename": "kamera.jpg",
+                        "storagePath": "data/drafts/draft_old/images/normalized/01-normalized.jpg",
+                        "mimeType": "image/jpeg",
+                        "order": 1,
+                        "kind": "normalized",
+                    }
+                ]
+            },
             "workflow": {
                 "status": WorkflowStatus.READY_FOR_REVIEW,
                 "needsReview": True,
@@ -77,6 +93,10 @@ def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: P
         {
             "id": "draft_new",
             "sku": "OIN-NEW",
+            "listing": {
+                "title": "Nintendo Switch OLED",
+                "subtitle": "Mit Dock und Netzteil",
+            },
             "workflow": {
                 "status": WorkflowStatus.READY_FOR_MARKETPLACE,
                 "needsReview": False,
@@ -94,11 +114,13 @@ def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: P
     assert response.status_code == 200
     assert "draft_old" in response.text
     assert "draft_new" in response.text
-    assert "SKU OIN-OLD" in response.text
-    assert "SKU OIN-NEW" in response.text
+    assert "Vintage Kamera" in response.text
+    assert "Nintendo Switch OLED" in response.text
+    assert "Mit Dock und Netzteil" in response.text
+    assert "/data/drafts/draft_old/images/normalized/01-normalized.jpg" in response.text
     assert 'href="/drafts/draft_old"' in response.text
     assert 'href="/drafts/draft_new"' in response.text
-    assert "Weiter bearbeiten" in response.text
+    assert "Öffnen" in response.text
     assert "Bereit für eBay" in response.text
     assert response.text.index("draft_new") < response.text.index("draft_old")
     get_settings.cache_clear()

@@ -166,6 +166,10 @@ def draft_list(request: Request):
             "last_updated_at": draft.workflow.last_updated_at.strftime("%d.%m.%Y, %H:%M Uhr"),
             "created_at": draft.workflow.created_at.strftime("%d.%m.%Y, %H:%M Uhr"),
             "detail_url": f"/drafts/{draft.id}",
+            "title": draft.listing.title.strip() or f"SKU {draft.sku}",
+            "subtitle": draft.listing.subtitle.strip() or draft.listing.condition.strip() or "Entwurf bereit zum Weiterbearbeiten",
+            "image_url": f"/{draft.source.images[0].storage_path}" if draft.source.images else None,
+            "image_alt": draft.source.images[0].original_filename if draft.source.images else "Kein Vorschaubild vorhanden",
         }
         for draft in drafts
     ]
