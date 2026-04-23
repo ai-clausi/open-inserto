@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     ebay_client_secret: str | None = None
     ebay_ru_name: str | None = None
 
+    draft_analysis_backend: str = Field(default="auto", pattern="^(heuristic|vision|auto)$")
+    vision_provider: str = Field(default="openai", pattern="^(openai)$")
+    vision_model: str = "gpt-4.1-mini"
+    vision_api_key: str | None = None
+    vision_timeout_seconds: float = 30.0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -38,6 +44,10 @@ class Settings(BaseSettings):
         if self.database_url.startswith(prefix):
             return Path(self.database_url[len(prefix) :])
         return Path(self.database_url)
+
+    @property
+    def has_vision_config(self) -> bool:
+        return self.vision_provider == "openai" and bool(self.vision_api_key and self.vision_model)
 
     @property
     def ebay_api_base_url(self) -> str:

@@ -1,4 +1,10 @@
-from app.drafts.analysis import DraftAnalysisResult, HeuristicDraftAnalysisService, apply_analysis_result
+from app.drafts.analysis import (
+    DraftAnalysisResult,
+    HeuristicDraftAnalysisService,
+    VisionDraftAnalysisService,
+    apply_analysis_result,
+    build_draft_analysis_service,
+)
 from app.drafts.identity import derive_sku, generate_draft_id
 from app.drafts.models import Draft, WorkflowStatus
 from app.drafts.repository import DraftRepository
@@ -9,8 +15,10 @@ __all__ = [
     "DraftAnalysisResult",
     "DraftRepository",
     "HeuristicDraftAnalysisService",
+    "VisionDraftAnalysisService",
     "WorkflowStatus",
     "apply_analysis_result",
+    "build_draft_analysis_service",
     "derive_sku",
     "generate_draft_id",
     "transition_draft",

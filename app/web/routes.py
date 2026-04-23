@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import get_settings
-from app.drafts.analysis import HeuristicDraftAnalysisService, apply_analysis_result
+from app.drafts.analysis import apply_analysis_result, build_draft_analysis_service
 from app.drafts.repository import DraftRepository
 from app.drafts.models import WorkflowStatus
 from app.drafts.review import (
@@ -202,7 +202,7 @@ async def upload_draft(
     settings = get_settings()
     repository = DraftRepository(settings.database_path)
     service = DraftUploadService(settings.data_dir)
-    analysis_service = HeuristicDraftAnalysisService()
+    analysis_service = build_draft_analysis_service(settings)
     form_values = {
         "notes": notes,
         "product_name": product_name,
