@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} – Drafts{% endblock %}
+
+{% block content %}
+<section class="hero hero--landing hero--drafts">
+  <div class="hero-landing__copy">
+    <p class="eyebrow">Draft-Übersicht</p>
+    <h1>Vorhandene Drafts wiederfinden</h1>
+    <p class="hero-lead">
+      Alle gespeicherten Drafts an einem Ort, zuletzt bearbeitete zuerst.
+    </p>
+    <p class="hero-support">
+      Öffne bestehende Drafts direkt wieder, prüfe den Status und springe ohne Umwege zurück in die Detailansicht.
+    </p>
+
+    <div class="hero-actions">
+      <a class="button button--primary" href="/drafts/upload">Neuen Draft anlegen</a>
+    </div>
+  </div>
+
+  <aside class="hero-landing__panel">
+    <p class="eyebrow">Übersicht</p>
+    <div class="landing-metrics">
+      <div class="landing-metric">
+        <span>Drafts gesamt</span>
+        <strong>{{ drafts | length }}</strong>
+      </div>
+      <div class="landing-metric">
+        <span>Sortierung</span>
+        <strong>Neueste zuerst</strong>
+      </div>
+      <div class="landing-metric landing-metric--wide">
+        <span>Fokus</span>
+        <strong>Schnell wieder einsteigen und ohne Umwege weiterbearbeiten</strong>
+      </div>
+    </div>
+  </aside>
+</section>
+
+<section class="card card--config draft-list-shell">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Drafts</p>
+      <h2>Gespeicherte Entwürfe</h2>
+    </div>
+    <a class="button button--secondary" href="/">Zur Startseite</a>
+  </div>
+
+  {% if drafts %}
+    <div class="draft-list-grid">
+      {% for draft in drafts %}
+        <article class="draft-list-card">
+          <a class="draft-list-card__image" href="{{ draft.detail_url }}" aria-label="{{ draft.title }} öffnen">
+            {% if draft.image_url %}
+              <img src="{{ draft.image_url }}" alt="{{ draft.image_alt }}">
+            {% else %}
+              <div class="draft-list-card__image-placeholder" aria-hidden="true">Kein Bild</div>
+            {% endif %}
+            <span class="draft-list-card__status-badge {% if draft.status.value in ['offer_created', 'published'] %}draft-list-card__status-badge--success{% elif draft.status.value in ['needs_attention', 'blocked', 'error'] %}draft-list-card__status-badge--warning{% else %}draft-list-card__status-badge--neutral{% endif %}">
+              {{ draft.status_label }}
+            </span>
+          </a>
+
+          <div class="draft-list-card__intro">
+            <h3>{{ draft.title }}</h3>
+            <p class="draft-list-card__subtitle">{{ draft.subtitle }}</p>
+            <p class="draft-list-card__support">Zuletzt bearbeitet am {{ draft.last_updated_at }}</p>
+          </div>
+
+          <div class="draft-list-card__footer">
+            <span class="draft-list-card__reference">Entwurf ansehen</span>
+            <a class="button button--secondary draft-list-card__action" href="{{ draft.detail_url }}">Öffnen</a>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="notice notice--info draft-list-empty">
+      <h3>Noch keine Drafts vorhanden</h3>
+      <p>Lege zuerst einen neuen Draft an, dann erscheint er hier automatisch in der Übersicht.</p>
+      <a class="button button--primary" href="/drafts/upload">Zum Upload</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -354,4 +354,6 @@ def test_draft_detail_shows_success_result_with_technical_details_link(client: T
 
     assert "eBay-Draft erfolgreich erstellt" in detail.text
     assert 'href="#technical-details"' in detail.text
+    assert 'href="/drafts"' in detail.text
+    assert "Zurück zur Übersicht" in detail.text
     assert "Technische Details anzeigen" in detail.text

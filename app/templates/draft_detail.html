@@ -9,8 +9,9 @@
     <h1>{{ result_summary.headline }}</h1>
     <p class="hero-lead">{{ result_summary.body }}</p>
     <p class="hero-support">Draft-ID: <strong>{{ draft.id }}</strong> · SKU: <strong>{{ draft.sku }}</strong></p>
-    <div class="hero-actions">
+    <div class="hero-actions hero-actions--split">
       <a class="button button--primary" href="#{{ result_summary.primary_action_target }}">{{ result_summary.primary_action_label }}</a>
+      <a class="button button--secondary" href="/drafts">Zurück zur Übersicht</a>
     </div>
   </div>
 

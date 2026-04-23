@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from app.drafts.models import Draft, WorkflowStatus
+from app.drafts.repository import DraftRepository
 from app.main import create_app
 
 
@@ -25,7 +27,103 @@ def test_index_page_renders():
     assert "Open Inserto" in response.text
     assert "MVP Upload Flow" in response.text
     assert "Zum Upload" in response.text
+    assert "Drafts ansehen" in response.text
     assert 'href="/drafts/upload"' in response.text
+    assert 'href="/drafts"' in response.text
+
+
+def test_draft_list_page_renders_empty_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'data' / 'test.db'}")
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as client:
+        response = client.get("/drafts")
+
+    assert response.status_code == 200
+    assert "Noch keine Drafts vorhanden" in response.text
+    assert 'href="/drafts/upload"' in response.text
+    get_settings.cache_clear()
+
+
+
+def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'data' / 'test.db'}")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    with TestClient(create_app()):
+        pass
+
+    repository = DraftRepository(settings.database_path)
+
+    older = Draft.model_validate(
+        {
+            "id": "draft_old",
+            "sku": "OIN-OLD",
+            "listing": {
+                "title": "Vintage Kamera",
+                "condition": "Gebraucht, guter Zustand",
+            },
+            "source": {
+                "images": [
+                    {
+                        "id": "img-old",
+                        "originalFilename": "kamera.jpg",
+                        "storagePath": "data/drafts/draft_old/images/normalized/01-normalized.jpg",
+                        "mimeType": "image/jpeg",
+                        "order": 1,
+                        "kind": "normalized",
+                    }
+                ]
+            },
+            "workflow": {
+                "status": WorkflowStatus.READY_FOR_REVIEW,
+                "needsReview": True,
+                "createdAt": "2026-04-18T10:00:00+00:00",
+                "lastUpdatedAt": "2026-04-18T11:00:00+00:00",
+            },
+        }
+    )
+    newer = Draft.model_validate(
+        {
+            "id": "draft_new",
+            "sku": "OIN-NEW",
+            "listing": {
+                "title": "Nintendo Switch OLED",
+                "subtitle": "Mit Dock und Netzteil",
+            },
+            "workflow": {
+                "status": WorkflowStatus.READY_FOR_MARKETPLACE,
+                "needsReview": False,
+                "createdAt": "2026-04-19T10:00:00+00:00",
+                "lastUpdatedAt": "2026-04-19T12:30:00+00:00",
+            },
+        }
+    )
+    repository.create_draft(older)
+    repository.create_draft(newer)
+
+    with TestClient(create_app()) as client:
+        response = client.get("/drafts")
+
+    assert response.status_code == 200
+    assert "draft_old" in response.text
+    assert "draft_new" in response.text
+    assert "Vintage Kamera" in response.text
+    assert "Nintendo Switch OLED" in response.text
+    assert "Mit Dock und Netzteil" in response.text
+    assert "/data/drafts/draft_old/images/normalized/01-normalized.jpg" in response.text
+    assert 'href="/drafts/draft_old"' in response.text
+    assert 'href="/drafts/draft_new"' in response.text
+    assert "Öffnen" in response.text
+    assert "Bereit für eBay" in response.text
+    assert response.text.index("draft_new") < response.text.index("draft_old")
+    get_settings.cache_clear()
 
 
 def test_index_does_not_show_connected_for_env_token_fallbacks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

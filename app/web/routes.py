@@ -34,6 +34,19 @@ EXTRA_FIELDS = [
 ]
 
 
+STATUS_LABELS = {
+    WorkflowStatus.DRAFT: "Neu",
+    WorkflowStatus.CLASSIFIED: "Klassifiziert",
+    WorkflowStatus.NEEDS_ATTENTION: "Braucht Aufmerksamkeit",
+    WorkflowStatus.READY_FOR_REVIEW: "Bereit fürs Review",
+    WorkflowStatus.READY_FOR_MARKETPLACE: "Bereit für eBay",
+    WorkflowStatus.OFFER_CREATED: "eBay-Draft erstellt",
+    WorkflowStatus.PUBLISHED: "Veröffentlicht",
+    WorkflowStatus.BLOCKED: "Blockiert",
+    WorkflowStatus.ERROR: "Fehler",
+}
+
+
 def build_context(request: Request, **extra):
     settings = get_settings()
     auth_store = EbayAuthStore(settings.database_path)
@@ -133,6 +146,38 @@ def health() -> dict[str, str]:
 @router.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", build_context(request))
+
+
+@router.get("/drafts", response_class=HTMLResponse)
+def draft_list(request: Request):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    drafts = sorted(
+        repository.list_drafts(),
+        key=lambda draft: draft.workflow.last_updated_at,
+        reverse=True,
+    )
+    draft_items = [
+        {
+            "id": draft.id,
+            "sku": draft.sku,
+            "status": draft.workflow.status,
+            "status_label": STATUS_LABELS.get(draft.workflow.status, draft.workflow.status.value),
+            "last_updated_at": draft.workflow.last_updated_at.strftime("%d.%m.%Y, %H:%M Uhr"),
+            "created_at": draft.workflow.created_at.strftime("%d.%m.%Y, %H:%M Uhr"),
+            "detail_url": f"/drafts/{draft.id}",
+            "title": draft.listing.title.strip() or f"SKU {draft.sku}",
+            "subtitle": draft.listing.subtitle.strip() or draft.listing.condition.strip() or "Entwurf bereit zum Weiterbearbeiten",
+            "image_url": f"/{draft.source.images[0].storage_path}" if draft.source.images else None,
+            "image_alt": draft.source.images[0].original_filename if draft.source.images else "Kein Vorschaubild vorhanden",
+        }
+        for draft in drafts
+    ]
+    return templates.TemplateResponse(
+        request,
+        "draft_list.html",
+        build_context(request, drafts=draft_items),
+    )
 
 
 @router.get("/drafts/upload", response_class=HTMLResponse)
