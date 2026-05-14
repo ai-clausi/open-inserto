@@ -10,9 +10,9 @@ def make_draft() -> Draft:
 def test_valid_workflow_transition_updates_status():
     draft = make_draft()
 
-    transition_draft(draft, WorkflowStatus.CLASSIFIED)
+    transition_draft(draft, WorkflowStatus.OFFER_CREATED)
 
-    assert draft.workflow.status is WorkflowStatus.CLASSIFIED
+    assert draft.workflow.status is WorkflowStatus.OFFER_CREATED
 
 
 def test_invalid_workflow_transition_raises_error():
@@ -24,3 +24,15 @@ def test_invalid_workflow_transition_raises_error():
         assert "Invalid workflow transition" in str(exc)
     else:
         raise AssertionError("Expected invalid workflow transition to fail")
+
+
+def test_legacy_readiness_statuses_load_as_draft_lifecycle_status():
+    draft = Draft.model_validate(
+        {
+            "id": "draft_legacy",
+            "sku": "OIN-LEGACY",
+            "workflow": {"status": "ready_for_marketplace"},
+        }
+    )
+
+    assert draft.workflow.status is WorkflowStatus.DRAFT

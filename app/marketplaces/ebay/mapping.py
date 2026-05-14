@@ -26,12 +26,26 @@ def build_inventory_item_payload(draft: Draft, settings: Settings) -> dict:
         aspects["Marke"] = [draft.listing.brand.strip()]
     if draft.listing.model.strip():
         aspects["Modell"] = [draft.listing.model.strip()]
+    product_identifier_type = _string_attribute(draft, "product_identifier_type")
+    product_identifier_value = _string_attribute(draft, "product_identifier_value")
+    if product_identifier_type and product_identifier_value:
+        aspects[product_identifier_type] = [product_identifier_value]
+    for detail in _string_list_attribute(draft, "keyTechnicalDetails"):
+        if ":" not in detail:
+            continue
+        label, value = [part.strip() for part in detail.split(":", 1)]
+        if label and value:
+            aspects[label] = [value]
 
     product = {
         "title": draft.listing.title.strip(),
         "description": draft.listing.description_html.strip(),
         "imageUrls": list(draft.marketplace.ebay.image_urls),
     }
+    if product_identifier_value and product_identifier_type.upper() in {"EAN", "GTIN"}:
+        product["ean"] = [product_identifier_value]
+    elif product_identifier_value and product_identifier_type.upper() in {"MPN", "MODELL-NUMMER", "ARTIKELNUMMER"}:
+        product["mpn"] = product_identifier_value
     if aspects:
         product["aspects"] = aspects
 
@@ -67,3 +81,15 @@ def build_offer_payload(draft: Draft, settings: Settings, config: EffectiveEbayC
 
 def map_condition(condition: str) -> str:
     return CONDITION_MAP.get(condition.strip().lower(), "USED_GOOD")
+
+
+def _string_attribute(draft: Draft, key: str) -> str:
+    value = draft.listing.attributes.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _string_list_attribute(draft: Draft, key: str) -> list[str]:
+    value = draft.listing.attributes.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]

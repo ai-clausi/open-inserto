@@ -118,22 +118,21 @@ Dort liegen z. B.:
 
 Enthält Steuerungs- und Statusinfos:
 
-- aktueller Bearbeitungsstatus
-- Review-Bedarf
-- fehlende Angaben
+- persistierter Lebenszyklusstatus
+- optional gecachte Review-Hinweise
+- optional gecachte fehlende Angaben
 - Zeitstempel
 
 ## Beispiel für erste Statuswerte
 
-Mögliche Werte für `workflow.status`:
+Persistierte Werte für `workflow.status`:
 
 - `draft`
-- `classified`
-- `ready_for_review`
-- `ready_for_marketplace`
 - `offer_created`
 - `published`
-- `blocked`
+- `error`
+
+Review- und Readiness-Zustände wie `ready`, `needs_attention`, `blocked`, `eBay einrichten` oder `Bereit für eBay` werden aus `listing`, `source`, `marketplace` und eBay-Konfiguration abgeleitet. Sie werden nicht als zweite Wahrheit in `workflow.status` gespeichert.
 
 ## Warum dieses Modell?
 

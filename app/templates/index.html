@@ -32,6 +32,14 @@
         <span>Autorisierung</span>
         <strong>{{ 'verbunden' if ebay_auth_connected else 'nicht verbunden' }}</strong>
       </div>
+      <div class="landing-metric">
+        <span>Analysemodus</span>
+        <strong>{{ ai_configuration_status.mode_label }}</strong>
+      </div>
+      <div class="landing-metric">
+        <span>KI-Konfiguration</span>
+        <strong>{{ ai_configuration_status.config_label }}</strong>
+      </div>
       <div class="landing-metric landing-metric--wide">
         <span>Datenbank</span>
         <strong>{{ database_url }}</strong>
@@ -176,6 +184,15 @@
   </article>
 
   <div class="landing-stack">
+    <article class="card card--muted">
+      <p class="eyebrow">KI-Analyse</p>
+      <h2>{{ ai_configuration_status.mode_label }}</h2>
+      <p>{{ ai_configuration_status.detail }}</p>
+      <div class="status-chip {% if ai_configuration_status.config_ready %}status-chip--success{% else %}status-chip--muted{% endif %}">
+        KI-Konfiguration {{ ai_configuration_status.config_label }}
+      </div>
+    </article>
+
     <article class="card card--accent">
       <p class="eyebrow">Workflow</p>
       <h2>Bereits umgesetzt</h2>

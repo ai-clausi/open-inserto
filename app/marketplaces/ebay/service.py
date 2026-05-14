@@ -6,6 +6,7 @@ from pathlib import Path
 from app.core.config import Settings
 from app.drafts.models import Draft, WorkflowStatus
 from app.drafts.repository import DraftRepository
+from app.drafts.rendering import refresh_listing_description
 from app.drafts.workflow import transition_draft
 from app.marketplaces.ebay.auth import has_usable_auth_tokens
 from app.marketplaces.ebay.configuration import EbayConfigStore, validate_config_against_resources
@@ -34,6 +35,7 @@ class EbayMarketplaceService:
         draft = self.repository.get_draft(draft_id)
         if draft is None:
             raise KeyError(f"Draft not found: {draft_id}")
+        refresh_listing_description(draft)
 
         try:
             logger.debug("Starting eBay draft creation: draft_id=%s sku=%s", draft.id, draft.sku)
@@ -75,7 +77,6 @@ class EbayMarketplaceService:
             return draft
         except MarketplaceValidationError as exc:
             logger.warning("eBay draft blocked by validation: draft_id=%s errors=%s", draft.id, exc.errors)
-            draft.workflow.status = WorkflowStatus.BLOCKED
             draft.workflow.missing_information = exc.errors
             draft.marketplace.ebay.offer_data["lastError"] = str(exc)
             self.repository.save_draft(draft)
@@ -84,14 +85,12 @@ class EbayMarketplaceService:
             logger.warning("eBay draft failed due to auth error: draft_id=%s error=%s", draft.id, exc)
             if isinstance(self.client, EbayClient) and self.client.auth_store is not None:
                 self.client.auth_store.clear_tokens()
-            draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
             draft.workflow.missing_information = []
             draft.marketplace.ebay.offer_data["lastError"] = str(exc)
             self.repository.save_draft(draft)
             return draft
         except (EbayValidationError, EbayApiError) as exc:
             logger.warning("eBay draft failed due to API error: draft_id=%s error=%s", draft.id, exc)
-            draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
             draft.workflow.missing_information = []
             draft.marketplace.ebay.offer_data["lastError"] = str(exc)
             self.repository.save_draft(draft)

@@ -115,6 +115,51 @@ class DraftUploadService:
         )
         return UploadResult(draft=draft, original_paths=original_paths)
 
+    def append_images_to_draft(self, draft: Draft, *, files: list[UploadAsset]) -> list[SourceImage]:
+        validated_files = self._validate_files(files)
+        if len(draft.source.images) + len(validated_files) > MAX_UPLOAD_IMAGES:
+            raise UploadValidationError(f"Bitte maximal {MAX_UPLOAD_IMAGES} Bilder pro Draft verwenden.")
+
+        draft_dir = self.drafts_dir / draft.id
+        originals_dir = draft_dir / "images" / "originals"
+        normalized_dir = draft_dir / "images" / "normalized"
+        originals_dir.mkdir(parents=True, exist_ok=True)
+        normalized_dir.mkdir(parents=True, exist_ok=True)
+
+        start_index = max((image.order for image in draft.source.images), default=0) + 1
+        appended: list[SourceImage] = []
+
+        for offset, asset in enumerate(validated_files):
+            index = start_index + offset
+            image, original_bytes = self._load_image(asset)
+            normalized_image = ImageOps.exif_transpose(image)
+            if max(normalized_image.size) < MIN_LONGEST_SIDE:
+                msg = (
+                    f"{asset.filename or f'Bild {index}'} ist zu klein. "
+                    f"Die längste Seite muss mindestens {MIN_LONGEST_SIDE}px haben."
+                )
+                raise UploadValidationError(msg)
+
+            original_suffix = self._detect_suffix(asset)
+            original_path = originals_dir / f"{index:02d}-original{original_suffix}"
+            original_path.write_bytes(original_bytes)
+
+            normalized_path = normalized_dir / f"{index:02d}-normalized{NORMALIZED_SUFFIX}"
+            normalized_image.convert("RGB").save(normalized_path, format="JPEG", quality=92, optimize=True)
+
+            source_image = SourceImage(
+                id=f"img_{uuid4().hex[:8]}",
+                originalFilename=asset.filename or f"upload-{index}{original_suffix}",
+                storagePath=str(normalized_path.relative_to(self.data_dir.parent)),
+                mimeType=NORMALIZED_MIME_TYPE,
+                order=index,
+                kind="normalized",
+            )
+            draft.source.images.append(source_image)
+            appended.append(source_image)
+
+        return appended
+
     def _validate_files(self, files: list[UploadAsset]) -> list[UploadAsset]:
         non_empty = [file for file in files if (file.filename or "").strip()]
         if not non_empty:

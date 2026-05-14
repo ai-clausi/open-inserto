@@ -1,3 +1,6 @@
+import json
+
+from app.db.base import get_connection
 from app.db.init_db import initialize_database
 from app.drafts.identity import derive_sku
 from app.drafts.models import Draft, WorkflowStatus
@@ -45,8 +48,7 @@ def test_repository_filters_by_status_and_updates_marketplace_refs(tmp_path):
     repository = DraftRepository(db_path)
     draft = make_draft()
 
-    transition_draft(draft, WorkflowStatus.CLASSIFIED)
-    transition_draft(draft, WorkflowStatus.READY_FOR_REVIEW)
+    transition_draft(draft, WorkflowStatus.OFFER_CREATED)
     repository.save_draft(draft)
     updated = repository.update_marketplace_refs(
         draft.id,
@@ -54,9 +56,31 @@ def test_repository_filters_by_status_and_updates_marketplace_refs(tmp_path):
         offer_id="offer-456",
     )
 
-    ready_for_review = repository.list_drafts(WorkflowStatus.READY_FOR_REVIEW)
+    offer_created = repository.list_drafts(WorkflowStatus.OFFER_CREATED)
 
-    assert len(ready_for_review) == 1
-    assert ready_for_review[0].id == draft.id
+    assert len(offer_created) == 1
+    assert offer_created[0].id == draft.id
     assert updated.marketplace.ebay.inventory_item_key == "inv-123"
     assert updated.marketplace.ebay.offer_id == "offer-456"
+
+
+def test_repository_treats_legacy_readiness_statuses_as_drafts(tmp_path):
+    db_path = tmp_path / "open_inserto.db"
+    initialize_database(db_path)
+    repository = DraftRepository(db_path)
+    draft = make_draft()
+    payload = draft.model_dump(mode="json", by_alias=True)
+    payload["workflow"]["status"] = "ready_for_marketplace"
+    repository.create_draft(draft)
+
+    with get_connection(db_path) as connection:
+        connection.execute(
+            "UPDATE drafts SET status = ?, data_json = ? WHERE id = ?",
+            ("ready_for_marketplace", json.dumps(payload), draft.id),
+        )
+        connection.commit()
+
+    loaded = repository.list_drafts(WorkflowStatus.DRAFT)
+
+    assert len(loaded) == 1
+    assert loaded[0].workflow.status is WorkflowStatus.DRAFT

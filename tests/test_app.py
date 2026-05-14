@@ -28,6 +28,7 @@ def test_index_page_renders():
     assert "MVP Upload Flow" in response.text
     assert "Zum Upload" in response.text
     assert "Drafts ansehen" in response.text
+    assert "KI-Konfiguration" in response.text
     assert 'href="/drafts/upload"' in response.text
     assert 'href="/drafts"' in response.text
 
@@ -68,6 +69,13 @@ def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: P
             "listing": {
                 "title": "Vintage Kamera",
                 "condition": "Gebraucht, guter Zustand",
+                "attributes": {
+                    "analysis": {
+                        "performed": True,
+                        "mode": "vision",
+                        "label": "KI-Analyse durchgeführt",
+                    }
+                },
             },
             "source": {
                 "images": [
@@ -82,7 +90,7 @@ def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: P
                 ]
             },
             "workflow": {
-                "status": WorkflowStatus.READY_FOR_REVIEW,
+                "status": WorkflowStatus.DRAFT,
                 "needsReview": True,
                 "createdAt": "2026-04-18T10:00:00+00:00",
                 "lastUpdatedAt": "2026-04-18T11:00:00+00:00",
@@ -98,7 +106,7 @@ def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: P
                 "subtitle": "Mit Dock und Netzteil",
             },
             "workflow": {
-                "status": WorkflowStatus.READY_FOR_MARKETPLACE,
+                "status": WorkflowStatus.DRAFT,
                 "needsReview": False,
                 "createdAt": "2026-04-19T10:00:00+00:00",
                 "lastUpdatedAt": "2026-04-19T12:30:00+00:00",
@@ -121,8 +129,57 @@ def test_draft_list_page_shows_existing_drafts_sorted_by_last_update(tmp_path: P
     assert 'href="/drafts/draft_old"' in response.text
     assert 'href="/drafts/draft_new"' in response.text
     assert "Öffnen" in response.text
-    assert "Bereit für eBay" in response.text
+    assert "KI-Analyse durchgeführt" in response.text
+    assert "Keine Analyse hinterlegt" in response.text
     assert response.text.index("draft_new") < response.text.index("draft_old")
+    get_settings.cache_clear()
+
+
+def test_index_shows_missing_ai_configuration_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'data' / 'test.db'}")
+    for env_var in (
+        "DRAFT_ANALYSIS_BACKEND",
+        "VISION_PROVIDER",
+        "VISION_MODEL",
+        "VISION_API_KEY",
+        "VISION_TIMEOUT_SECONDS",
+        "VISION_IMAGE_MAX_SIDE",
+        "VISION_IMAGE_QUALITY",
+        "VISION_IMAGE_DETAIL",
+        "VISION_MAX_IMAGES",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "KI-Konfiguration" in response.text
+    assert "Nicht erfüllt" in response.text
+    assert "Ohne vollständige KI-Konfiguration bleibt die Basisanalyse aktiv" in response.text
+    get_settings.cache_clear()
+
+
+def test_index_shows_fulfilled_ai_configuration_when_vision_is_configured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'data' / 'test.db'}")
+    monkeypatch.setenv("DRAFT_ANALYSIS_BACKEND", "vision")
+    monkeypatch.setenv("VISION_PROVIDER", "openai")
+    monkeypatch.setenv("VISION_MODEL", "gpt-4.1-mini")
+    monkeypatch.setenv("VISION_API_KEY", "test-key")
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "KI-Konfiguration" in response.text
+    assert "Erfüllt" in response.text
+    assert "KI-Analyse" in response.text
     get_settings.cache_clear()
 
 

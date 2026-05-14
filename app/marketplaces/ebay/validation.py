@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.drafts.models import Draft, WorkflowStatus
+from app.drafts.models import Draft
 from app.marketplaces.ebay.configuration import EffectiveEbayConfiguration
 
 
@@ -29,13 +29,10 @@ def collect_marketplace_readiness_errors(
     draft: Draft,
     config: EffectiveEbayConfiguration,
     *,
-    include_workflow_status: bool = True,
     auth_connected: bool | None = None,
 ) -> list[str]:
     errors: list[str] = []
 
-    if include_workflow_status and draft.workflow.status is not WorkflowStatus.READY_FOR_MARKETPLACE:
-        errors.append("Draft ist nicht bereit für den Marketplace-Schritt")
     if not draft.listing.title.strip():
         errors.append("Titel fehlt")
     if not draft.listing.description_html.strip():
