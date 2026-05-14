@@ -3,8 +3,11 @@ from __future__ import annotations
 import base64
 import logging
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol
+
+from PIL import Image, ImageOps
 
 from app.core.config import Settings
 from app.drafts.models import Draft, ListingData, WorkflowStatus
@@ -12,6 +15,10 @@ from app.drafts.rendering import render_listing_description
 from app.drafts.vision import OpenAIVisionAnalyzerClient
 
 logger = logging.getLogger(__name__)
+
+VISION_IMAGE_MAX_SIDE = 1280
+VISION_IMAGE_QUALITY = 80
+VISION_IMAGE_DETAIL = "auto"
 
 
 @dataclass(slots=True)
@@ -21,6 +28,9 @@ class DraftAnalysisResult:
     needs_review: bool = True
     missing_information: list[str] | None = None
     confidence_notes: list[str] | None = None
+    description_text: str = ""
+    analysis_mode: str = "heuristic"
+    analysis_label: str = "Basisanalyse durchgeführt"
 
     def __post_init__(self) -> None:
         if self.missing_information is None:
@@ -87,6 +97,9 @@ class HeuristicDraftAnalysisService:
             needs_review=True,
             missing_information=missing_information,
             confidence_notes=confidence_notes,
+            description_text=notes,
+            analysis_mode="heuristic",
+            analysis_label="Basisanalyse durchgeführt",
         )
 
 
@@ -150,6 +163,9 @@ class VisionDraftAnalysisService:
             needs_review=True,
             missing_information=list(dict.fromkeys(missing_information)),
             confidence_notes=confidence_notes,
+            description_text=_clean_text(payload.get("description")) or draft.source.notes.strip(),
+            analysis_mode="vision",
+            analysis_label="KI-Analyse durchgeführt",
         )
 
     def _build_image_payloads(self, draft: Draft) -> list[dict[str, str]]:
@@ -160,10 +176,24 @@ class VisionDraftAnalysisService:
                 image_path = self.project_dir / image_path
             if not image_path.exists():
                 raise FileNotFoundError(f"Bilddatei nicht gefunden: {image_path}")
-            encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
-            mime_type = image.mime_type or "image/jpeg"
-            image_payloads.append({"image_url": f"data:{mime_type};base64,{encoded}"})
+            encoded = self._encode_image_for_vision(image_path)
+            image_payloads.append(
+                {
+                    "image_url": f"data:image/jpeg;base64,{encoded}",
+                    "detail": VISION_IMAGE_DETAIL,
+                }
+            )
         return image_payloads
+
+    def _encode_image_for_vision(self, image_path: Path) -> str:
+        with Image.open(image_path) as image:
+            normalized = ImageOps.exif_transpose(image).convert("RGB")
+            if max(normalized.size) > VISION_IMAGE_MAX_SIDE:
+                normalized.thumbnail((VISION_IMAGE_MAX_SIDE, VISION_IMAGE_MAX_SIDE), Image.Resampling.LANCZOS)
+
+            buffer = BytesIO()
+            normalized.save(buffer, format="JPEG", quality=VISION_IMAGE_QUALITY, optimize=True)
+        return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
 class ConfiguredDraftAnalysisService:
@@ -183,6 +213,8 @@ class ConfiguredDraftAnalysisService:
             analysis.confidence_notes.append(
                 f"KI-/Vision-Analyzer nicht verfügbar, Fallback auf Heuristik verwendet: {exc}"
             )
+            analysis.analysis_mode = "fallback"
+            analysis.analysis_label = "Basisanalyse durchgeführt"
             return analysis
 
 
@@ -217,12 +249,26 @@ def apply_analysis_result(draft: Draft, analysis: DraftAnalysisResult) -> Draft:
     draft.workflow.needs_review = analysis.needs_review
     draft.workflow.missing_information = list(analysis.missing_information or [])
     draft.workflow.last_updated_at = draft.workflow.last_updated_at
+    draft.source.notes = analysis.description_text.strip()
+    draft.source.user_input.update(
+        {
+            "product_name": draft.listing.title.strip(),
+            "condition": draft.listing.condition.strip(),
+            "accessories": "\n".join(item.strip() for item in draft.listing.included_items if item.strip()),
+            "hints": "\n".join(item.strip() for item in draft.listing.issues if item.strip()),
+        }
+    )
 
     confidence_notes = list(analysis.confidence_notes or [])
     if confidence_notes:
         draft.listing.attributes["confidenceNotes"] = confidence_notes
     else:
         draft.listing.attributes.pop("confidenceNotes", None)
+    draft.listing.attributes["analysis"] = {
+        "performed": True,
+        "mode": analysis.analysis_mode,
+        "label": analysis.analysis_label,
+    }
 
     return draft
 

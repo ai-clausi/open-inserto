@@ -20,7 +20,7 @@ OPTIONAL_FIELDS: dict[str, str] = {
     "brand": "Marke",
     "model": "Modell",
     "subtitle": "Untertitel",
-    "category_suggestion": "eBay-Kategorie-ID",
+    "category_suggestion": "eBay-Kategorie",
 }
 
 
@@ -56,6 +56,44 @@ def get_missing_core_fields(draft: Draft) -> list[str]:
 def get_confidence_notes(draft: Draft) -> list[str]:
     notes = draft.listing.attributes.get("confidenceNotes", [])
     return [note for note in notes if isinstance(note, str) and note.strip()]
+
+
+def get_analysis_metadata(draft: Draft) -> dict[str, Any]:
+    metadata = draft.listing.attributes.get("analysis")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def get_analysis_state(draft: Draft) -> dict[str, str | bool]:
+    metadata = get_analysis_metadata(draft)
+    if metadata.get("performed") is True:
+        mode = str(metadata.get("mode") or "").strip().lower() or "heuristic"
+        label = str(metadata.get("label") or "").strip() or "Analyse durchgeführt"
+    else:
+        notes = get_confidence_notes(draft)
+        if any("KI-/Vision-Analyzer verwendet" in note for note in notes):
+            mode = "vision"
+            label = "KI-Analyse durchgeführt"
+        elif notes:
+            mode = "heuristic"
+            label = "Basisanalyse durchgeführt"
+        else:
+            return {"performed": False, "mode": "none", "label": "Keine Analyse hinterlegt", "tone": "muted"}
+
+    if mode == "vision":
+        tone = "success"
+    elif mode in {"heuristic", "fallback"}:
+        tone = "info"
+    else:
+        tone = "muted"
+    return {"performed": True, "mode": mode, "label": label, "tone": tone}
+
+
+def get_review_form_values(draft: Draft) -> dict[str, str]:
+    return {
+        "description": draft.source.notes.strip(),
+        "included_items": "\n".join(item.strip() for item in draft.listing.included_items if item.strip()),
+        "hints": "\n".join(item.strip() for item in draft.listing.issues if item.strip()),
+    }
 
 
 def get_review_metadata(draft: Draft) -> dict[str, Any]:

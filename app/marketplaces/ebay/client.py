@@ -89,6 +89,28 @@ class EbayClient:
             token_type=normalize_token_type(payload.get("token_type")),
         )
 
+    def get_application_access_token(self) -> EbayAccessToken:
+        if not self.settings.ebay_client_id or not self.settings.ebay_client_secret:
+            raise EbayAuthError("eBay Client-ID oder Client-Secret fehlt")
+        logger.debug("Requesting eBay application access token via client credentials")
+        response = self._client.post(
+            f"{self.settings.ebay_api_base_url}/identity/v1/oauth2/token",
+            auth=(self.settings.ebay_client_id, self.settings.ebay_client_secret),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                "grant_type": "client_credentials",
+                "scope": "https://api.ebay.com/oauth/api_scope",
+            },
+        )
+        self._log_response("application_token_exchange", response)
+        self._raise_for_status(response, auth_failure_cls=EbayAuthError)
+        payload = response.json()
+        return EbayAccessToken(
+            token=payload.get("access_token") or "",
+            expires_in=payload.get("expires_in"),
+            token_type=normalize_token_type(payload.get("token_type")),
+        )
+
     def exchange_authorization_code(self, code: str) -> EbayTokenData:
         if not self.settings.ebay_ru_name:
             raise EbayAuthError("eBay Redirect-URI-ID (RuName) fehlt")
@@ -258,6 +280,52 @@ class EbayClient:
         )
         services = payload.get("shippingServices", [])
         return [item for item in services if isinstance(item, dict)]
+
+    def get_default_category_tree_id(self, access_token: EbayAccessToken) -> str:
+        payload = self._get_labeled(
+            access_token,
+            label="Standard-Kategoriebaum",
+            url=f"{self.settings.ebay_api_base_url}/commerce/taxonomy/v1/get_default_category_tree_id",
+            params={"marketplace_id": self.settings.ebay_marketplace_id},
+        )
+        category_tree_id = str(payload.get("categoryTreeId") or "").strip()
+        if not category_tree_id:
+            raise EbayApiError("eBay-Taxonomy lieferte keine categoryTreeId")
+        return category_tree_id
+
+    def get_category_suggestions(self, access_token: EbayAccessToken, *, category_tree_id: str, query: str) -> list[dict[str, str]]:
+        payload = self._get_labeled(
+            access_token,
+            label="Kategorievorschläge",
+            url=f"{self.settings.ebay_api_base_url}/commerce/taxonomy/v1/category_tree/{category_tree_id}/get_category_suggestions",
+            params={"q": query},
+        )
+        suggestions: list[dict[str, str]] = []
+        for item in payload.get("categorySuggestions", []):
+            if not isinstance(item, dict):
+                continue
+            category = item.get("category")
+            if not isinstance(category, dict):
+                continue
+            category_id = str(category.get("categoryId") or "").strip()
+            category_name = str(category.get("categoryName") or "").strip()
+            if not category_id or not category_name:
+                continue
+            ancestors = item.get("categoryTreeNodeAncestors")
+            path_parts = []
+            if isinstance(ancestors, list):
+                for ancestor in reversed(ancestors):
+                    if isinstance(ancestor, dict) and str(ancestor.get("categoryName") or "").strip():
+                        path_parts.append(str(ancestor.get("categoryName")).strip())
+            path_parts.append(category_name)
+            suggestions.append(
+                {
+                    "id": category_id,
+                    "name": category_name,
+                    "path": " > ".join(path_parts),
+                }
+            )
+        return suggestions
 
     def create_payment_policy(self, access_token: EbayAccessToken, payload: dict[str, Any]) -> dict[str, Any]:
         return self._post_json_labeled(

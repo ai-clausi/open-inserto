@@ -85,6 +85,7 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
     assert "Testgerät" in detail.text
     assert "ready_for_review" in detail.text
     assert "Kernangaben vollständig" in detail.text
+    assert "Basisanalyse durchgeführt" in detail.text
     assert "Netzteil" in detail.text
     assert "Seriennummer verdeckt" in detail.text
     assert "Gerendertes Listing-HTML" in detail.text
@@ -100,6 +101,55 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
     normalized = sorted(settings.data_dir.glob("drafts/*/images/normalized/*"))
     assert len(originals) == 2
     assert len(normalized) == 2
+
+
+def test_draft_detail_can_trigger_analysis_again_from_ui(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Kleine Lampe", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+
+    class StubAnalysisService:
+        def analyze(self, draft: Draft):
+            draft_copy = draft.model_copy(deep=True)
+            draft_copy.listing.title = "Neu analysierte Lampe"
+            draft_copy.listing.condition = "sehr gut"
+            draft_copy.listing.included_items = ["Kabel", "Ersatzbirne"]
+            draft_copy.listing.issues = ["Leichte Kratzer", "Schirm leicht verzogen"]
+            draft_copy.listing.attributes["confidenceNotes"] = ["Neu ausgewertet"]
+            from app.drafts.analysis import DraftAnalysisResult
+
+            return DraftAnalysisResult(
+                listing=draft_copy.listing,
+                workflow_status=WorkflowStatus.READY_FOR_REVIEW,
+                needs_review=True,
+                missing_information=[],
+                confidence_notes=["Neu ausgewertet"],
+                description_text="Schlichte Tischlampe in gutem Gesamtzustand.",
+                analysis_mode="vision",
+                analysis_label="KI-Analyse durchgeführt",
+            )
+
+    monkeypatch.setattr("app.web.routes.build_draft_analysis_service", lambda settings: StubAnalysisService())
+
+    rerun = client.post(f"{location}/analyze", follow_redirects=False)
+
+    assert rerun.status_code == 303
+    assert rerun.headers["location"] == location
+
+    detail = client.get(location)
+    assert "Analyse erneut ausführen" in detail.text
+    assert "Neu analysierte Lampe" in detail.text
+    assert "KI-Analyse durchgeführt" in detail.text
+    assert "Neu ausgewertet" in detail.text
+    assert "Schlichte Tischlampe in gutem Gesamtzustand." in detail.text
+    assert "Kabel\nErsatzbirne" in detail.text
+    assert "Leichte Kratzer\nSchirm leicht verzogen" in detail.text
 
 
 def test_post_upload_without_images_returns_validation_error(client: TestClient):

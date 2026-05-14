@@ -66,6 +66,9 @@
             <h3>{{ draft.title }}</h3>
             <p class="draft-list-card__subtitle">{{ draft.subtitle }}</p>
             <p class="draft-list-card__support">Zuletzt bearbeitet am {{ draft.last_updated_at }}</p>
+            <p class="draft-list-card__analysis draft-list-card__analysis--{{ draft.analysis_state.tone }}">
+              {{ draft.analysis_state.label }}
+            </p>
           </div>
 
           <div class="draft-list-card__footer">

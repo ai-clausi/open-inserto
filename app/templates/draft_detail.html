@@ -31,6 +31,10 @@
         <strong>{{ marketplace_status_label }}</strong>
       </div>
       <div class="landing-metric">
+        <span>Analyse</span>
+        <strong>{{ analysis_state.label }}</strong>
+      </div>
+      <div class="landing-metric landing-metric--wide">
         <span>Bilder</span>
         <strong>{{ draft.source.images | length }}</strong>
       </div>
@@ -66,6 +70,11 @@
           <p>Die Kernangaben für das Review sind vollständig oder wurden bewusst leer bestätigt.</p>
         </div>
       {% endif %}
+
+      <form method="post" action="/drafts/{{ draft.id }}/analyze" class="stack-md">
+        <p>Wenn Bilder, Hinweise oder die KI-Konfiguration angepasst wurden, kannst du die Analyse für diesen Draft erneut ausführen.</p>
+        <button class="button button--secondary" type="submit">Analyse erneut ausführen</button>
+      </form>
 
       {% if confidence_notes or show_technical_workflow_hint %}
         <details class="detail-disclosure">
@@ -235,15 +244,15 @@
 
         <label class="field field--full" for="description">
           <span>{{ core_fields['description_html'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
-          <textarea id="description" name="description" rows="6" placeholder="Kurz, klar, was ist es und in welchem Zustand?">{{ draft.source.notes }}</textarea>
+          <textarea id="description" name="description" rows="6" placeholder="Kurz, klar, was ist es und in welchem Zustand?">{{ review_form_values.description }}</textarea>
         </label>
-        {% if not draft.source.notes.strip() %}
+        {% if not review_form_values.description.strip() %}
           <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="description_html" {% if 'description_html' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
         {% endif %}
 
         <label class="field field--full" for="included_items">
           <span>{{ core_fields['included_items'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
-          <textarea id="included_items" name="included_items" rows="4" placeholder="Je Zeile oder kommagetrennt, z. B. Dock, Netzteil, OVP">{{ draft.source.user_input.get('accessories', '') }}</textarea>
+          <textarea id="included_items" name="included_items" rows="4" placeholder="Je Zeile oder kommagetrennt, z. B. Dock, Netzteil, OVP">{{ review_form_values.included_items }}</textarea>
         </label>
         {% if not draft.listing.included_items %}
           <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="included_items" {% if 'included_items' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
@@ -271,12 +280,32 @@
 
         <label class="field field--full" for="category_suggestion">
           <span>{{ optional_fields['category_suggestion'] }} <span class="field-badge field-badge--required">Für eBay-Draft nötig</span></span>
-          <input id="category_suggestion" name="category_suggestion" type="text" inputmode="numeric" value="{{ draft.listing.category_suggestion }}" placeholder="z. B. 139971">
+          <input id="category_suggestion" name="category_suggestion" type="text" value="{{ draft.listing.category_suggestion }}" placeholder="z. B. 139971 oder Spielkonsole">
         </label>
+        {% if category_resolution.selected_name %}
+          <p class="field-help">Aufgelöst zu: <strong>{{ category_resolution.selected_name }}</strong>{% if category_resolution.selected_id %} · ID {{ category_resolution.selected_id }}{% endif %}</p>
+        {% endif %}
+        {% if category_resolution.selected_path %}
+          <p class="field-help">{{ category_resolution.selected_path }}</p>
+        {% endif %}
+        {% if category_resolution.message %}
+          <p class="field-help">{{ category_resolution.message }}</p>
+        {% endif %}
+        {% if category_resolution.suggestions %}
+          <div class="suggestion-list" aria-label="eBay-Kategorievorschläge">
+            {% for item in category_resolution.suggestions %}
+              <div class="suggestion-list__item">
+                <strong>{{ item.name }}</strong>
+                <span>{{ item.id }}</span>
+                <p>{{ item.path }}</p>
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
 
         <label class="field field--full" for="hints">
           <span>Hinweise / offene Punkte <span class="field-badge field-badge--optional">Optional</span></span>
-          <textarea id="hints" name="hints" rows="5" placeholder="z. B. leichte Kratzer, Seriennummer verdeckt">{{ draft.source.user_input.get('hints', '') }}</textarea>
+          <textarea id="hints" name="hints" rows="5" placeholder="z. B. leichte Kratzer, Seriennummer verdeckt">{{ review_form_values.hints }}</textarea>
         </label>
       </article>
     </section>

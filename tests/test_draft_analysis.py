@@ -1,12 +1,20 @@
 from pathlib import Path
+import base64
+from io import BytesIO
+import json
+
+from PIL import Image
 
 from app.drafts.analysis import (
+    VISION_IMAGE_DETAIL,
+    VISION_IMAGE_MAX_SIDE,
     HeuristicDraftAnalysisService,
     VisionDraftAnalysisService,
     apply_analysis_result,
     build_draft_analysis_service,
 )
 from app.drafts.models import Draft, WorkflowStatus
+from app.drafts.vision import _extract_structured_output
 
 
 class StubVisionClient:
@@ -54,7 +62,8 @@ def build_draft(*, user_input: dict[str, str] | None = None, notes: str = "") ->
 def write_image(project_dir: Path) -> None:
     image_path = project_dir / "data/drafts/draft_test1234/images/normalized/01-normalized.jpg"
     image_path.parent.mkdir(parents=True, exist_ok=True)
-    image_path.write_bytes(b"fake-image-bytes")
+    image = Image.new("RGB", (2400, 1600), color=(120, 160, 210))
+    image.save(image_path, format="JPEG", quality=92)
 
 
 def test_heuristic_analysis_maps_known_fields_into_listing():
@@ -110,6 +119,8 @@ def test_apply_analysis_result_updates_draft_fields():
     assert updated.workflow.status == WorkflowStatus.NEEDS_ATTENTION
     assert updated.workflow.missing_information == ["Zustand fehlt"]
     assert "confidenceNotes" in updated.listing.attributes
+    assert updated.source.user_input["product_name"] == "Kamera"
+    assert updated.source.user_input["hints"] == "Akku fehlt"
 
 
 def test_vision_analysis_maps_structured_payload_and_uses_notes_and_images(tmp_path: Path):
@@ -118,6 +129,7 @@ def test_vision_analysis_maps_structured_payload_and_uses_notes_and_images(tmp_p
         {
             "title": "Nintendo Switch OLED",
             "condition": "gebraucht",
+            "description": "Nintendo Switch OLED in gebrauchtem, gepflegtem Zustand.",
             "brand": "Nintendo",
             "model": "OLED",
             "includedItems": ["Dock", "Netzteil"],
@@ -147,10 +159,15 @@ def test_vision_analysis_maps_structured_payload_and_uses_notes_and_images(tmp_p
     assert analysis.listing.category_suggestion == "Spielkonsole"
     assert analysis.listing.included_items == ["Dock", "Netzteil"]
     assert analysis.listing.issues == ["leichte Gebrauchsspuren", "Originalkarton fehlt", "OLED-Modell mit Netzteil"]
+    assert analysis.description_text == "Nintendo Switch OLED in gebrauchtem, gepflegtem Zustand."
     assert analysis.workflow_status == WorkflowStatus.READY_FOR_REVIEW
     assert client.calls[0]["notes"] == "OLED-Modell mit Netzteil"
     assert client.calls[0]["user_input"]["hints"] == "Originalkarton fehlt"
     assert client.calls[0]["image_payloads"][0]["image_url"].startswith("data:image/jpeg;base64,")
+    assert client.calls[0]["image_payloads"][0]["detail"] == VISION_IMAGE_DETAIL
+    encoded = client.calls[0]["image_payloads"][0]["image_url"].split(",", 1)[1]
+    resized = Image.open(BytesIO(base64.b64decode(encoded)))
+    assert max(resized.size) == VISION_IMAGE_MAX_SIDE
     assert "KI-/Vision-Analyzer verwendet" in analysis.confidence_notes[-1]
 
 
@@ -174,3 +191,30 @@ def test_build_draft_analysis_service_falls_back_to_heuristic_when_vision_fails(
     assert analysis.listing.title == "Kamera"
     assert analysis.workflow_status == WorkflowStatus.NEEDS_ATTENTION
     assert any("Fallback auf Heuristik" in note for note in analysis.confidence_notes)
+
+
+def test_extract_structured_output_prefers_top_level_output_parsed():
+    payload = {"output_parsed": {"title": "Switch OLED", "condition": "gebraucht"}}
+
+    extracted = _extract_structured_output(payload)
+
+    assert extracted == {"title": "Switch OLED", "condition": "gebraucht"}
+
+
+def test_extract_structured_output_falls_back_to_output_text_json():
+    payload = {
+        "output": [
+            {
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": json.dumps({"title": "Steam Deck", "condition": "sehr gut"}),
+                    }
+                ]
+            }
+        ]
+    }
+
+    extracted = _extract_structured_output(payload)
+
+    assert extracted == {"title": "Steam Deck", "condition": "sehr gut"}

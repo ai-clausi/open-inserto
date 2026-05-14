@@ -9,9 +9,11 @@ from app.drafts.models import WorkflowStatus
 from app.drafts.review import (
     CORE_FIELDS,
     OPTIONAL_FIELDS,
+    get_analysis_state,
     evaluate_review_state,
     get_confidence_notes,
     get_missing_core_fields,
+    get_review_form_values,
     get_review_metadata,
     update_draft_from_review,
 )
@@ -20,6 +22,7 @@ from app.marketplaces.ebay.service import EbayMarketplaceService
 from app.marketplaces.ebay.auth import EbayAuthStore, build_auth_connect_url, has_usable_auth_tokens
 from app.marketplaces.ebay.client import EbayApiError, EbayAuthError, EbayClient, EbayValidationError, normalize_search_text
 from app.marketplaces.ebay.configuration import EbayConfigStore
+from app.marketplaces.ebay.taxonomy import get_category_resolution, resolve_category_suggestion_for_draft
 from app.marketplaces.ebay.validation import collect_marketplace_notes, collect_marketplace_readiness_errors
 
 router = APIRouter()
@@ -55,11 +58,14 @@ def build_context(request: Request, **extra):
     ebay_auth_connected = has_usable_auth_tokens(token_data)
     effective_config = config_store.get_effective_configuration()
     discovered_resources = config_store.get_discovered_resources()
+    ai_configuration_status = _build_ai_configuration_status(settings)
     context = {
         "request": request,
         "app_name": settings.app_name,
         "ebay_mode": settings.ebay_mode,
         "database_url": settings.database_url,
+        "draft_analysis_backend": settings.draft_analysis_backend,
+        "ai_configuration_status": ai_configuration_status,
         "extra_fields": EXTRA_FIELDS,
         "ebay_auth_connected": ebay_auth_connected,
         "ebay_effective_config": effective_config,
@@ -68,6 +74,31 @@ def build_context(request: Request, **extra):
     }
     context.update(extra)
     return context
+
+
+def _build_ai_configuration_status(settings) -> dict[str, object]:
+    config_ready = settings.has_vision_config
+    backend = settings.draft_analysis_backend
+
+    if backend == "heuristic":
+        mode_label = "Basisanalyse"
+        detail = "Keine KI-Konfiguration erforderlich"
+    elif backend == "vision":
+        mode_label = "KI-Analyse"
+        detail = "Vision-Provider ist fest aktiviert"
+    elif config_ready:
+        mode_label = "KI mit Fallback"
+        detail = "Bei Ausfall wird auf Basisanalyse zurückgefallen"
+    else:
+        mode_label = "Basisanalyse"
+        detail = "Ohne vollständige KI-Konfiguration bleibt die Basisanalyse aktiv"
+
+    return {
+        "config_ready": config_ready,
+        "config_label": "Erfüllt" if config_ready else "Nicht erfüllt",
+        "mode_label": mode_label,
+        "detail": detail,
+    }
 
 
 def build_draft_result_summary(
@@ -170,6 +201,7 @@ def draft_list(request: Request):
             "subtitle": draft.listing.subtitle.strip() or draft.listing.condition.strip() or "Entwurf bereit zum Weiterbearbeiten",
             "image_url": f"/{draft.source.images[0].storage_path}" if draft.source.images else None,
             "image_alt": draft.source.images[0].original_filename if draft.source.images else "Kein Vorschaubild vorhanden",
+            "analysis_state": get_analysis_state(draft),
         }
         for draft in drafts
     ]
@@ -230,6 +262,7 @@ async def upload_draft(
         )
         analysis = analysis_service.analyze(result.draft)
         apply_analysis_result(result.draft, analysis)
+        resolve_category_suggestion_for_draft(result.draft, settings)
     except UploadValidationError as exc:
         return templates.TemplateResponse(
             request,
@@ -298,6 +331,9 @@ def draft_detail(request: Request, draft_id: str):
             review_state=review_state,
             missing_core_fields=get_missing_core_fields(draft),
             confidence_notes=get_confidence_notes(draft),
+            analysis_state=get_analysis_state(draft),
+            category_resolution=get_category_resolution(draft),
+            review_form_values=get_review_form_values(draft),
             review_metadata=get_review_metadata(draft),
             marketplace_readiness_errors=marketplace_readiness_errors,
             marketplace_notes=marketplace_notes,
@@ -315,6 +351,22 @@ def draft_detail(request: Request, draft_id: str):
             result_summary=result_summary,
         ),
     )
+
+
+@router.post("/drafts/{draft_id}/analyze", response_class=HTMLResponse)
+def draft_reanalyze(request: Request, draft_id: str):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    analysis_service = build_draft_analysis_service(settings)
+    analysis = analysis_service.analyze(draft)
+    apply_analysis_result(draft, analysis)
+    resolve_category_suggestion_for_draft(draft, settings)
+    repository.save_draft(draft)
+    return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/drafts/{draft_id}/review", response_class=HTMLResponse)
@@ -353,6 +405,7 @@ async def draft_review_submit(
         confirm_fields=confirm_fields,
         action=action,
     )
+    resolve_category_suggestion_for_draft(draft, settings)
     repository.save_draft(draft)
     return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
 
