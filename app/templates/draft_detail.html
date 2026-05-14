@@ -1,14 +1,19 @@
 {% extends "base.html" %}
 
-{% block title %}{{ app_name }} – Draft {{ draft.id }}{% endblock %}
+{% macro source_badge(field) -%}
+  {% set source = field_sources.get(field, 'Entwurf') %}
+  <span class="field-source field-source--{{ 'ai' if source == 'KI' else 'edited' if source == 'Bearbeitet' else 'user' }}">{{ source }}</span>
+{%- endmacro %}
+
+{% block title %}{{ app_name }} - Draft {{ draft.id }}{% endblock %}
 
 {% block content %}
 <section class="hero hero--landing hero--detail">
   <div class="hero-landing__copy">
-    <p class="eyebrow">Ergebnis & nächster Schritt</p>
-    <h1>{{ result_summary.headline }}</h1>
+    <p class="eyebrow">Artikelentwurf</p>
+    <h1>{{ draft.listing.title or result_summary.headline }}</h1>
     <p class="hero-lead">{{ result_summary.body }}</p>
-    <p class="hero-support">Draft-ID: <strong>{{ draft.id }}</strong> · SKU: <strong>{{ draft.sku }}</strong></p>
+    <p class="hero-support">Analyse: <strong>{{ analysis_state.label }}</strong> · Bilder: <strong>{{ draft.source.images | length }}</strong></p>
     <div class="hero-actions hero-actions--split">
       <a class="button button--primary" href="#{{ result_summary.primary_action_target }}">{{ result_summary.primary_action_label }}</a>
       <a class="button button--secondary" href="/drafts">Zurück zur Übersicht</a>
@@ -16,335 +21,301 @@
   </div>
 
   <aside class="hero-landing__panel">
-    <p class="eyebrow">Workflowstatus</p>
+    <p class="eyebrow">Nächster Schritt</p>
     <div class="landing-metrics">
       <div class="landing-metric">
-        <span>Review</span>
-        <strong>{{ review_status_label }}</strong>
+        <span>Status</span>
+        <strong>{{ display_status.label }}</strong>
       </div>
       <div class="landing-metric">
+        <span>eBay</span>
+        <strong>{{ marketplace_status_label }}</strong>
+      </div>
+      <div class="landing-metric landing-metric--wide">
         <span>Kernangaben</span>
         <strong>{{ review_state_label }}</strong>
       </div>
-      <div class="landing-metric">
-        <span>eBay-Draft</span>
-        <strong>{{ marketplace_status_label }}</strong>
-      </div>
-      <div class="landing-metric">
-        <span>Analyse</span>
-        <strong>{{ analysis_state.label }}</strong>
-      </div>
-      <div class="landing-metric landing-metric--wide">
-        <span>Bilder</span>
-        <strong>{{ draft.source.images | length }}</strong>
-      </div>
     </div>
   </aside>
 </section>
 
-<section class="detail-shell">
-  <section class="detail-main">
-    <article class="card card--config" id="review-form">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">Reviewstatus</p>
-          <h2>Prüfen und absichern</h2>
-        </div>
-        <div class="status-chip {% if review_state == 'ready' %}status-chip--success{% else %}status-chip--muted{% endif %}">
-          {{ review_state_label }}
-        </div>
+{% if missing_core_fields or marketplace_readiness_errors %}
+  <section class="notice-strip">
+    {% if missing_core_fields %}
+      <div class="notice notice--warning">
+        <h3>Noch vor dem Senden ergänzen</h3>
+        <ul>
+          {% for item in missing_core_fields %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
       </div>
+    {% endif %}
+    {% if marketplace_readiness_errors %}
+      <div class="notice notice--warning">
+        <h3>eBay braucht noch</h3>
+        <ul>
+          {% for item in marketplace_readiness_errors %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  </section>
+{% endif %}
 
-      {% if missing_core_fields %}
-        <div class="notice notice--warning">
-          <h3>Jetzt zuerst ergänzen</h3>
-          <p>Diese Kernfelder blockieren den nächsten sinnvollen Schritt und sollten vor dem Marketplace-Teil vervollständigt werden.</p>
-          <ul>
-            {% for item in missing_core_fields %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% else %}
-        <div class="notice notice--success">
-          <p>Die Kernangaben für das Review sind vollständig oder wurden bewusst leer bestätigt.</p>
-        </div>
-      {% endif %}
-
-      <form method="post" action="/drafts/{{ draft.id }}/analyze" class="stack-md">
-        <p>Wenn Bilder, Hinweise oder die KI-Konfiguration angepasst wurden, kannst du die Analyse für diesen Draft erneut ausführen.</p>
-        <button class="button button--secondary" type="submit">Analyse erneut ausführen</button>
-      </form>
-
-      {% if confidence_notes or show_technical_workflow_hint %}
-        <details class="detail-disclosure">
-          <summary>Diagnose und unsichere Angaben anzeigen</summary>
-
-          {% if confidence_notes %}
-            <div class="notice notice--info">
-              <h3>Unsichere Angaben</h3>
-              <ul>
-                {% for item in confidence_notes %}
-                  <li>{{ item }}</li>
-                {% endfor %}
-              </ul>
-            </div>
-          {% endif %}
-
-          {% if show_technical_workflow_hint %}
-            <div class="notice notice--info">
-              <h3>Technischer Status</h3>
-              <p>Interner Workflow-Status: <strong>{{ draft.workflow.status }}</strong></p>
-              <p>Der technische Status dient nur der Systemdiagnose. Maßgeblich für den nächsten Schritt sind oben die Bereiche „Kernangaben“ und „eBay-Draft“.</p>
-            </div>
-          {% endif %}
-        </details>
-      {% endif %}
-    </article>
-
-    <article class="card card--accent">
+<section class="listing-workbench">
+  <aside class="workbench-side">
+    <article class="card">
       <div class="section-head section-head--compact">
         <div>
-          <p class="eyebrow">Bildprüfung</p>
-          <h2>Sichtprüfung der Uploads</h2>
+          <p class="eyebrow">Bilder</p>
+          <h2>Sichtprüfung</h2>
         </div>
       </div>
-      <p>Vorhandene normalisierte Arbeitskopien für die manuelle Sichtprüfung.</p>
-      <div class="preview-grid">
+      <div class="preview-grid preview-grid--compact">
         {% for image in draft.source.images %}
           <article class="preview-card">
-            <img src="/{{ image.storage_path }}" alt="{{ image.original_filename }}">
+            <a href="/{{ image.storage_path }}" target="_blank" rel="noopener">
+              <img src="/{{ image.storage_path }}" alt="{{ image.original_filename }}">
+            </a>
             <strong>{{ image.order }}. {{ image.original_filename }}</strong>
-            <span class="preview-meta">{{ image.mime_type }} · {{ image.kind }}</span>
+            <form method="post" action="/drafts/{{ draft.id }}/images/{{ image.id }}/delete">
+              <button class="button button--secondary button--compact" type="submit">Bild entfernen</button>
+            </form>
           </article>
         {% endfor %}
       </div>
+      <form method="post" action="/drafts/{{ draft.id }}/images" enctype="multipart/form-data" class="stack-md">
+        <label class="field field--full" for="images">
+          <span>Bilder ergänzen</span>
+          <input id="images" name="images" type="file" accept="image/*" multiple>
+        </label>
+        <button class="button button--secondary" type="submit">Bilder hinzufügen</button>
+      </form>
     </article>
-  </section>
 
-  <aside class="detail-sidebar">
-    <article class="card card--config">
-      <div class="section-head">
-        <div>
-          <p class="eyebrow">Marketplace</p>
-          <h2>Nächster eBay-Schritt</h2>
-        </div>
-        <div class="status-chip {% if not ebay_action_disabled and ebay_auth_connected %}status-chip--success{% else %}status-chip--muted{% endif %}">
-          {{ marketplace_status_label }}
-        </div>
-      </div>
-      <div class="notice {% if result_summary.tone == 'success' %}notice--success{% elif result_summary.tone == 'error' %}notice--error{% elif result_summary.tone == 'warning' %}notice--warning{% else %}notice--info{% endif %}">
-        <h3>Was gerade wichtig ist</h3>
-        <p><strong>{{ result_summary.headline }}</strong></p>
-        <p>{{ result_summary.body }}</p>
-      </div>
+    <article class="card">
+      <h2>Originaleingabe</h2>
+      <p class="section-copy">Unverändert gespeichert, damit nachvollziehbar bleibt, was von dir kam.</p>
+      {% set original_user_input = original_input.get('userInput', {}) %}
+      <dl class="source-list">
+        {% if original_user_input.get('product_name') %}
+          <dt>Produktname</dt>
+          <dd>{{ original_user_input.get('product_name') }}</dd>
+        {% endif %}
+        {% if original_user_input.get('condition') %}
+          <dt>Zustand</dt>
+          <dd>{{ original_user_input.get('condition') }}</dd>
+        {% endif %}
+        {% if original_user_input.get('accessories') %}
+          <dt>Lieferumfang</dt>
+          <dd>{{ original_user_input.get('accessories') }}</dd>
+        {% endif %}
+        {% if original_user_input.get('hints') %}
+          <dt>Hinweise</dt>
+          <dd>{{ original_user_input.get('hints') }}</dd>
+        {% endif %}
+        {% if original_input.get('notes') %}
+          <dt>Notizen</dt>
+          <dd>{{ original_input.get('notes') }}</dd>
+        {% endif %}
+      </dl>
+    </article>
+  </aside>
 
-      {% set ebay_error = draft.marketplace.ebay.offer_data.get('lastError') %}
-      {% if ebay_error %}
-        <div class="notice notice--error">
-          <h3>Letzter Fehler</h3>
-          <p>{{ ebay_error }}</p>
-          {% if not ebay_auth_connected %}
-            <p>Die gespeicherte eBay-Autorisierung ist nicht mehr nutzbar. Verbinde die App erneut und starte den eBay-Draft danach noch einmal.</p>
-          {% endif %}
+  <form method="post" action="/drafts/{{ draft.id }}/review" class="card listing-editor" id="listing-editor">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Finaler Entwurf</p>
+        <h2>eBay-Angaben bearbeiten</h2>
+      </div>
+      <div class="status-chip {% if review_state == 'ready' %}status-chip--success{% else %}status-chip--muted{% endif %}">
+        {{ review_state_label }}
+      </div>
+    </div>
+
+    <label class="field field--full" for="title">
+      <span>{{ core_fields['title'] }} {{ source_badge('title') }}</span>
+      <input id="title" name="title" type="text" value="{{ draft.listing.title }}" placeholder="z. B. HP Omen W9S97AA Gaming-Monitor">
+    </label>
+
+    <div class="field-grid">
+      <label class="field" for="brand">
+        <span>{{ optional_fields['brand'] }} {{ source_badge('brand') }}</span>
+        <input id="brand" name="brand" type="text" value="{{ draft.listing.brand }}" placeholder="z. B. HP">
+      </label>
+      <label class="field" for="model">
+        <span>{{ optional_fields['model'] }} {{ source_badge('model') }}</span>
+        <input id="model" name="model" type="text" value="{{ draft.listing.model }}" placeholder="z. B. Omen W9S97AA">
+      </label>
+    </div>
+
+    <div class="field-grid">
+      <label class="field" for="product_identifier_type">
+        <span>Kennungstyp {{ source_badge('product_identifier') }}</span>
+        <input id="product_identifier_type" name="product_identifier_type" type="text" list="product-identifier-types" value="{{ review_form_values.product_identifier_type }}" placeholder="z. B. EAN oder Modell-Nummer">
+        <datalist id="product-identifier-types">
+          <option value="EAN">
+          <option value="GTIN">
+          <option value="MPN">
+          <option value="Modell-Nummer">
+          <option value="Artikelnummer">
+        </datalist>
+      </label>
+      <label class="field" for="product_identifier_value">
+        <span>Kennungswert {{ source_badge('product_identifier') }}</span>
+        <input id="product_identifier_value" name="product_identifier_value" type="text" value="{{ review_form_values.product_identifier_value }}" placeholder="z. B. 1234567890123">
+      </label>
+    </div>
+
+    <label class="field field--full" for="condition">
+      <span>{{ core_fields['condition'] }} {{ source_badge('condition') }}</span>
+      <input id="condition" name="condition" type="text" value="{{ draft.listing.condition }}" placeholder="z. B. gebraucht, voll funktionsfähig">
+    </label>
+
+    <label class="field field--full" for="description">
+      <span>Verkaufstext {{ source_badge('description') }}</span>
+      <textarea id="description" name="description" rows="6" placeholder="Angeboten wird ...">{{ review_form_values.description }}</textarea>
+    </label>
+
+    <label class="field field--full" for="included_items">
+      <span>{{ core_fields['included_items'] }} {{ source_badge('included_items') }}</span>
+      <textarea id="included_items" name="included_items" rows="4" placeholder="Je Zeile ein Artikel, z. B. Original Netzteil">{{ review_form_values.included_items }}</textarea>
+    </label>
+
+    <label class="field field--full" for="key_technical_details">
+      <span>{{ optional_fields['key_technical_details'] }} {{ source_badge('key_technical_details') }}</span>
+      <textarea id="key_technical_details" name="key_technical_details" rows="4" placeholder="Je Zeile ein relevanter Punkt, z. B. Anschlüsse: 2x HDMI, 1x DisplayPort">{{ review_form_values.key_technical_details }}</textarea>
+    </label>
+
+    <label class="field field--full" for="hints">
+      <span>Mängel / Hinweise {{ source_badge('issues') }}</span>
+      <textarea id="hints" name="hints" rows="4" placeholder="Nur relevante Mängel, Gebrauchsspuren oder offene Prüfpunkte">{{ review_form_values.hints }}</textarea>
+    </label>
+
+    <details class="detail-disclosure">
+      <summary>Weitere eBay-Angaben anzeigen</summary>
+      <label class="field field--full" for="subtitle">
+        <span>{{ optional_fields['subtitle'] }}</span>
+        <input id="subtitle" name="subtitle" type="text" value="{{ draft.listing.subtitle }}" placeholder="Kurze Zusatzinfo">
+      </label>
+      <label class="field field--full" for="category_suggestion">
+        <span>{{ optional_fields['category_suggestion'] }} <span class="field-badge field-badge--required">Für eBay-Draft nötig</span></span>
+        <input id="category_suggestion" name="category_suggestion" type="text" value="{{ draft.listing.category_suggestion }}" placeholder="z. B. 80053">
+      </label>
+      {% if category_resolution.suggestions %}
+        <div class="category-choice-list" aria-label="eBay-Kategorievorschläge">
+          {% for item in category_resolution.suggestions %}
+            <label class="category-choice">
+              <input type="radio" name="selected_category_suggestion" value="{{ item.id }}" {% if draft.listing.category_suggestion == item.id or category_resolution.selected_id == item.id %}checked{% endif %}>
+              <span>
+                <strong>{{ item.name }}</strong>
+                <small>{{ item.path }} · ID {{ item.id }}</small>
+              </span>
+            </label>
+          {% endfor %}
         </div>
       {% endif %}
-
-      {% if marketplace_notes %}
-        <details class="detail-disclosure">
-          <summary>Hinweise zum eBay-Draft anzeigen</summary>
-          <div class="notice notice--info">
-            <h3>Hinweise zum eBay-Draft</h3>
-            <p>Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch.</p>
-            <ul>
-              {% for item in marketplace_notes %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-        </details>
+      {% if category_resolution.selected_name %}
+        <p class="field-help">Aufgelöst zu: <strong>{{ category_resolution.selected_name }}</strong>{% if category_resolution.selected_id %} · ID {{ category_resolution.selected_id }}{% endif %}</p>
       {% endif %}
+      {% if category_resolution.selected_path %}
+        <p class="field-help">{{ category_resolution.selected_path }}</p>
+      {% endif %}
+      {% if category_resolution.message %}
+        <p class="field-help">{{ category_resolution.message }}</p>
+      {% endif %}
+    </details>
 
-      {% if marketplace_readiness_errors %}
-        <div class="notice notice--warning">
-          <h3>Noch offen vor dem eBay-Schritt</h3>
-          <p>Solange diese Punkte offen sind, bleibt der eBay-Transfer deaktiviert.</p>
+    <div class="button-row">
+      <button class="button button--primary" type="submit" name="action" value="save">Änderungen speichern</button>
+      <button class="button button--secondary" type="submit" name="action" value="confirm">Als geprüft markieren</button>
+    </div>
+  </form>
+
+</section>
+
+<section class="card card--accent listing-preview-wide">
+  <div class="section-head section-head--compact">
+    <div>
+      <p class="eyebrow">Live-Vorschau</p>
+      <h2>eBay-Beschreibung</h2>
+    </div>
+  </div>
+  {% if draft.listing.description_html %}
+    <div class="prose-preview prose-preview--listing">{{ draft.listing.description_html | safe }}</div>
+    <details class="detail-disclosure">
+      <summary>HTML-Quelltext anzeigen</summary>
+      <pre class="code-block"><code>{{ draft.listing.description_html }}</code></pre>
+    </details>
+  {% else %}
+    <p>Noch kein gerendertes HTML vorhanden.</p>
+  {% endif %}
+</section>
+
+<section class="post-workbench-grid">
+  <article class="card">
+    <h2>eBay-Draft</h2>
+    <p><strong>{{ result_summary.headline }}</strong></p>
+    <p class="section-copy">{{ result_summary.body }}</p>
+    {% if marketplace_notes %}
+      <details class="detail-disclosure">
+        <summary>Hinweise zum eBay-Draft anzeigen</summary>
+        <div class="notice notice--info">
+          <h3>Hinweise zum eBay-Draft</h3>
+          <p>Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch.</p>
           <ul>
-            {% for item in marketplace_readiness_errors %}
+            {% for item in marketplace_notes %}
               <li>{{ item }}</li>
             {% endfor %}
           </ul>
         </div>
-      {% endif %}
-
-      {% if not ebay_auth_connected %}
-        <form method="post" action="/integrations/ebay/connect" class="stack-md" id="ebay-connect">
-          <p>Für den eBay-Draft wird eine gültige OAuth-Verbindung benötigt. Wenn die Verbindung abgelaufen oder ungültig ist, bitte hier erneut autorisieren.</p>
-          <button class="button button--secondary" type="submit">eBay erneut verbinden</button>
-        </form>
-      {% endif %}
-
-      <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md" id="ebay-send">
-        <p>Erzeugt bzw. aktualisiert Inventory Item und ein unveröffentlichtes eBay-Offer. Nach einem eBay-Fehler kannst du den Schritt erneut ausführen, sobald die offenen Hinweise behoben sind.</p>
-        <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Draft senden</button>
-      </form>
-
-      <details class="detail-disclosure" id="technical-details">
-        <summary>Technische Details anzeigen</summary>
-        <div class="default-grid default-grid--single">
-          <div class="default-card"><span>Modus</span><strong>{{ ebay_mode }}</strong></div>
-          <div class="default-card"><span>Autorisierung</span><strong>{{ 'Verbunden' if ebay_auth_connected else 'Nicht verbunden' }}</strong></div>
-          <div class="default-card"><span>Merchant Location</span><strong>{{ ebay_effective_config.merchant_location_key or '–' }}</strong></div>
-          <div class="default-card"><span>Payment Policy</span><strong>{{ ebay_effective_config.payment_policy_id or '–' }}</strong></div>
-          <div class="default-card"><span>Fulfillment Policy</span><strong>{{ ebay_effective_config.fulfillment_policy_id or '–' }}</strong></div>
-          <div class="default-card"><span>Return Policy</span><strong>{{ ebay_effective_config.return_policy_id or '–' }}</strong></div>
-          <div class="default-card"><span>Inventory Item Key</span><strong>{{ draft.marketplace.ebay.inventory_item_key or '–' }}</strong></div>
-          <div class="default-card"><span>Offer ID</span><strong>{{ draft.marketplace.ebay.offer_id or '–' }}</strong></div>
-          <div class="default-card"><span>Bild-URLs</span><strong>{{ draft.marketplace.ebay.image_urls | length }}</strong></div>
-        </div>
       </details>
-    </article>
-  </aside>
-</section>
+    {% endif %}
+    {% set ebay_error = draft.marketplace.ebay.offer_data.get('lastError') %}
+    {% if ebay_error %}
+      <div class="notice notice--error">
+        <h3>Letzter Fehler</h3>
+        <p>{{ ebay_error }}</p>
+      </div>
+    {% endif %}
+    {% if not ebay_auth_connected %}
+      <form method="post" action="/integrations/ebay/connect" class="stack-md" id="ebay-connect">
+        <button class="button button--secondary" type="submit">eBay erneut verbinden</button>
+      </form>
+    {% endif %}
+    <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md" id="ebay-send">
+      <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Draft senden</button>
+    </form>
+  </article>
 
-<section class="panel review-panel">
-  <div class="review-panel__header">
-    <div>
-      <p class="eyebrow">Prüfen, korrigieren, bestätigen</p>
-      <h2>Review- und Validierungsmaske</h2>
-      <p>Bearbeite die Kernfelder, ergänze sinnvolle optionale Angaben und bestätige nur bewusst leere Pflichtfelder.</p>
-    </div>
-    <div class="review-panel__hint">
-      <strong>Hinweis</strong>
-      <p><span class="field-badge field-badge--required">Pflicht / sinnvoll</span> sollte möglichst gesetzt werden. <span class="field-badge field-badge--optional">Optional</span> ergänzt nur bei Mehrwert.</p>
-    </div>
-  </div>
-
-  <form method="post" action="/drafts/{{ draft.id }}/review" class="stack-lg review-form">
-    <section class="card-grid detail-grid review-columns">
-      <article class="card">
-        <h3>Kernfelder</h3>
-        <p class="section-copy">Diese Angaben treiben den eigentlichen Listing-Entwurf. Fehlende Werte bitte ergänzen oder bewusst leer bestätigen.</p>
-
-        <label class="field field--full" for="title">
-          <span>{{ core_fields['title'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
-          <input id="title" name="title" type="text" value="{{ draft.listing.title }}" placeholder="z. B. Nintendo Switch OLED">
-        </label>
-        {% if not draft.listing.title.strip() %}
-          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="title" {% if 'title' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
-        {% endif %}
-
-        <label class="field field--full" for="condition">
-          <span>{{ core_fields['condition'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
-          <input id="condition" name="condition" type="text" value="{{ draft.listing.condition }}" placeholder="z. B. gebraucht, sehr gut">
-        </label>
-        {% if not draft.listing.condition.strip() %}
-          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="condition" {% if 'condition' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
-        {% endif %}
-
-        <label class="field field--full" for="description">
-          <span>{{ core_fields['description_html'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
-          <textarea id="description" name="description" rows="6" placeholder="Kurz, klar, was ist es und in welchem Zustand?">{{ review_form_values.description }}</textarea>
-        </label>
-        {% if not review_form_values.description.strip() %}
-          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="description_html" {% if 'description_html' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
-        {% endif %}
-
-        <label class="field field--full" for="included_items">
-          <span>{{ core_fields['included_items'] }} <span class="field-badge field-badge--required">Pflicht / sinnvoll</span></span>
-          <textarea id="included_items" name="included_items" rows="4" placeholder="Je Zeile oder kommagetrennt, z. B. Dock, Netzteil, OVP">{{ review_form_values.included_items }}</textarea>
-        </label>
-        {% if not draft.listing.included_items %}
-          <label class="confirm-field"><input type="checkbox" name="confirm_fields" value="included_items" {% if 'included_items' in review_metadata.get('confirmedFields', []) %}checked{% endif %}> Bewusst leer bestätigt</label>
-        {% endif %}
-      </article>
-
-      <article class="card">
-        <h3>Ergänzende Angaben</h3>
-        <p class="section-copy">Nicht alles hiervon ist für den Review-Schritt Pflicht. Für den späteren eBay-Draft kann vor allem die Kategorie trotzdem relevant sein.</p>
-
-        <label class="field field--full" for="brand">
-          <span>{{ optional_fields['brand'] }} <span class="field-badge field-badge--optional">Optional</span></span>
-          <input id="brand" name="brand" type="text" value="{{ draft.listing.brand }}" placeholder="z. B. Nintendo">
-        </label>
-
-        <label class="field field--full" for="model">
-          <span>{{ optional_fields['model'] }} <span class="field-badge field-badge--optional">Optional</span></span>
-          <input id="model" name="model" type="text" value="{{ draft.listing.model }}" placeholder="z. B. OLED 64 GB">
-        </label>
-
-        <label class="field field--full" for="subtitle">
-          <span>{{ optional_fields['subtitle'] }} <span class="field-badge field-badge--optional">Optional</span></span>
-          <input id="subtitle" name="subtitle" type="text" value="{{ draft.listing.subtitle }}" placeholder="Kurze Zusatzinfo für das Listing">
-        </label>
-
-        <label class="field field--full" for="category_suggestion">
-          <span>{{ optional_fields['category_suggestion'] }} <span class="field-badge field-badge--required">Für eBay-Draft nötig</span></span>
-          <input id="category_suggestion" name="category_suggestion" type="text" value="{{ draft.listing.category_suggestion }}" placeholder="z. B. 139971 oder Spielkonsole">
-        </label>
-        {% if category_resolution.selected_name %}
-          <p class="field-help">Aufgelöst zu: <strong>{{ category_resolution.selected_name }}</strong>{% if category_resolution.selected_id %} · ID {{ category_resolution.selected_id }}{% endif %}</p>
-        {% endif %}
-        {% if category_resolution.selected_path %}
-          <p class="field-help">{{ category_resolution.selected_path }}</p>
-        {% endif %}
-        {% if category_resolution.message %}
-          <p class="field-help">{{ category_resolution.message }}</p>
-        {% endif %}
-        {% if category_resolution.suggestions %}
-          <div class="suggestion-list" aria-label="eBay-Kategorievorschläge">
-            {% for item in category_resolution.suggestions %}
-              <div class="suggestion-list__item">
-                <strong>{{ item.name }}</strong>
-                <span>{{ item.id }}</span>
-                <p>{{ item.path }}</p>
-              </div>
-            {% endfor %}
-          </div>
-        {% endif %}
-
-        <label class="field field--full" for="hints">
-          <span>Hinweise / offene Punkte <span class="field-badge field-badge--optional">Optional</span></span>
-          <textarea id="hints" name="hints" rows="5" placeholder="z. B. leichte Kratzer, Seriennummer verdeckt">{{ review_form_values.hints }}</textarea>
-        </label>
-      </article>
-    </section>
-
-    <section class="card-grid detail-grid draft-detail-grid">
-      <article class="card card--muted">
-        <h3>Aktueller Systemvorschlag</h3>
+  <details class="card detail-disclosure" id="technical-details">
+    <summary>Technische Details anzeigen</summary>
+    <h2>KI und Diagnose</h2>
+    <form method="post" action="/drafts/{{ draft.id }}/analyze" class="stack-md">
+      <button class="button button--secondary" type="submit">KI-Vorschlag neu erstellen</button>
+    </form>
+    {% if confidence_notes %}
+      <div class="notice notice--info">
+        <h3>KI-Hinweise</h3>
         <ul>
-          <li><strong>Titel:</strong> {{ draft.listing.title or '–' }}</li>
-          <li><strong>Zustand:</strong> {{ draft.listing.condition or '–' }}</li>
-          <li><strong>Kategorie:</strong> {{ draft.listing.category_suggestion or '–' }}</li>
-          <li><strong>Marke:</strong> {{ draft.listing.brand or '–' }}</li>
-          <li><strong>Modell:</strong> {{ draft.listing.model or '–' }}</li>
+          {% for item in confidence_notes %}
+            <li>{{ item }}</li>
+          {% endfor %}
         </ul>
-      </article>
-
-      <article class="card card--accent">
-        <h3>Gerendertes Listing-HTML</h3>
-        <p class="section-copy">Das HTML wird serverseitig aus den aktuellen Draft-Daten erzeugt, im Draft gespeichert und hier direkt als Vorschau angezeigt.</p>
-        <p class="section-copy">So ist direkt sichtbar, wie die eBay-Beschreibung aktuell aussieht. Beim Speichern oder Bestätigen wird derselbe gerenderte Stand erneut persistiert.</p>
-        {% if draft.listing.description_html %}
-          <div class="prose-preview prose-preview--listing">{{ draft.listing.description_html | safe }}</div>
-          <details>
-            <summary>HTML-Quelltext anzeigen</summary>
-            <pre class="code-block"><code>{{ draft.listing.description_html }}</code></pre>
-          </details>
-        {% else %}
-          <p>Noch kein gerendertes HTML vorhanden.</p>
-        {% endif %}
-      </article>
-
-      <article class="card action-card">
-        <h3>Aktionen</h3>
-        <p>„Änderungen speichern“ aktualisiert den Draft. Sobald die Review-Kernfelder vollständig sind, wird der Draft für den Marketplace-Schritt vorbereitet. Zusätzliche eBay-Voraussetzungen wie Kategorie oder Konfiguration siehst du oben separat.</p>
-        <div class="button-row button-row--single">
-          <button class="button button--secondary" type="submit" name="action" value="save">Änderungen speichern</button>
-        </div>
-      </article>
-    </section>
-  </form>
+      </div>
+    {% endif %}
+    <dl class="source-list">
+      <dt>Draft-ID</dt>
+      <dd>{{ draft.id }}</dd>
+      <dt>SKU</dt>
+      <dd>{{ draft.sku }}</dd>
+      <dt>Status</dt>
+      <dd>{{ display_status.label }}</dd>
+      <dt>eBay-Autorisierung</dt>
+      <dd>{{ 'Verbunden' if ebay_auth_connected else 'Nicht verbunden' }}</dd>
+    </dl>
+  </details>
 </section>
 {% endblock %}

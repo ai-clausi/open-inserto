@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     vision_model: str = "gpt-4.1-mini"
     vision_api_key: str | None = None
     vision_timeout_seconds: float = 30.0
+    vision_image_max_side: int = Field(default=1024, ge=256, le=2048)
+    vision_image_quality: int = Field(default=72, ge=40, le=95)
+    vision_image_detail: str = Field(default="low", pattern="^(low|auto|high)$")
+    vision_max_images: int = Field(default=4, ge=1, le=20)
 
     model_config = SettingsConfigDict(
         env_file=".env",

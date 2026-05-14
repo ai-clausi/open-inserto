@@ -4,18 +4,13 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 class WorkflowStatus(StrEnum):
     DRAFT = "draft"
-    CLASSIFIED = "classified"
-    NEEDS_ATTENTION = "needs_attention"
-    READY_FOR_REVIEW = "ready_for_review"
-    READY_FOR_MARKETPLACE = "ready_for_marketplace"
     OFFER_CREATED = "offer_created"
     PUBLISHED = "published"
-    BLOCKED = "blocked"
     ERROR = "error"
 
 
@@ -81,6 +76,18 @@ class WorkflowData(BaseModel):
     created_at: datetime = Field(default_factory=utc_now, alias="createdAt")
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_legacy_status(cls, value: object) -> object:
+        if isinstance(value, WorkflowStatus):
+            return value
+        if isinstance(value, str):
+            if value in {WorkflowStatus.DRAFT.value, WorkflowStatus.OFFER_CREATED.value, WorkflowStatus.PUBLISHED.value, WorkflowStatus.ERROR.value}:
+                return value
+            if value in {"classified", "needs_attention", "ready_for_review", "ready_for_marketplace", "blocked"}:
+                return WorkflowStatus.DRAFT.value
+        return value
 
 
 class Draft(BaseModel):

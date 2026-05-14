@@ -80,17 +80,17 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
 
     detail = client.get(location)
     assert detail.status_code == 200
-    assert "Review- und Validierungsmaske" in detail.text
+    assert "Finaler Entwurf" in detail.text
     assert "Leichte Gebrauchsspuren" in detail.text
     assert "Testgerät" in detail.text
-    assert "ready_for_review" in detail.text
+    assert "eBay einrichten" in detail.text
     assert "Kernangaben vollständig" in detail.text
     assert "Basisanalyse durchgeführt" in detail.text
     assert "Netzteil" in detail.text
     assert "Seriennummer verdeckt" in detail.text
-    assert "Gerendertes Listing-HTML" in detail.text
-    assert "Das HTML wird serverseitig aus den aktuellen Draft-Daten erzeugt, im Draft gespeichert" in detail.text
-    assert "Beim Speichern oder Bestätigen wird derselbe gerenderte Stand erneut persistiert" in detail.text
+    assert "Live-Vorschau" in detail.text
+    assert "Originaleingabe" in detail.text
+    assert "Verkaufstext" in detail.text
     assert "Wichtiger Hinweis:" in detail.text
     assert "MVP-Heuristik" in detail.text
     assert "front.jpg" in detail.text
@@ -126,7 +126,6 @@ def test_draft_detail_can_trigger_analysis_again_from_ui(client: TestClient, mon
 
             return DraftAnalysisResult(
                 listing=draft_copy.listing,
-                workflow_status=WorkflowStatus.READY_FOR_REVIEW,
                 needs_review=True,
                 missing_information=[],
                 confidence_notes=["Neu ausgewertet"],
@@ -143,12 +142,12 @@ def test_draft_detail_can_trigger_analysis_again_from_ui(client: TestClient, mon
     assert rerun.headers["location"] == location
 
     detail = client.get(location)
-    assert "Analyse erneut ausführen" in detail.text
+    assert "KI-Vorschlag neu erstellen" in detail.text
     assert "Neu analysierte Lampe" in detail.text
     assert "KI-Analyse durchgeführt" in detail.text
     assert "Neu ausgewertet" in detail.text
     assert "Schlichte Tischlampe in gutem Gesamtzustand." in detail.text
-    assert "Kabel\nErsatzbirne" in detail.text
+    assert "Neu analysierte Lampe\nKabel\nErsatzbirne" in detail.text
     assert "Leichte Kratzer\nSchirm leicht verzogen" in detail.text
 
 
@@ -192,7 +191,7 @@ def test_review_post_persists_changes_and_final_confirmation(client: TestClient)
 
     location = response.headers["location"]
     detail = client.get(location)
-    assert "ready_for_review" in detail.text
+    assert "eBay einrichten" in detail.text
 
     review_response = client.post(
         f"{location}/review",
@@ -215,7 +214,7 @@ def test_review_post_persists_changes_and_final_confirmation(client: TestClient)
     assert review_response.status_code == 303
 
     updated_detail = client.get(location)
-    assert "Review abgeschlossen" in updated_detail.text
+    assert "Kernangaben vollständig" in updated_detail.text
     assert "Lampe aus Metall" in updated_detail.text
     assert "Desk 2000" in updated_detail.text
     assert "Schreibtischlampe" in updated_detail.text
@@ -247,10 +246,9 @@ def test_review_save_with_missing_core_fields_stays_in_needs_attention(client: T
 
     assert review_response.status_code == 303
     updated_detail = client.get(location)
-    assert "needs_attention" in updated_detail.text
-    assert "Kernangaben noch prüfen" in updated_detail.text
-    assert "Jetzt zuerst ergänzen" in updated_detail.text
-    assert "Noch offen vor dem eBay-Schritt" in updated_detail.text
+    assert "Angaben ergänzen" in updated_detail.text
+    assert "Noch vor dem Senden ergänzen" in updated_detail.text
+    assert "eBay braucht noch" in updated_detail.text
 
 
 def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client: TestClient):
@@ -268,12 +266,166 @@ def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client
     assert "Hinweise zum eBay-Draft" in detail.text
     assert "Noch keine Preisschätzung vorhanden – für Auktionen wird aktuell trotzdem 1,00 € als Startpreis verwendet." in detail.text
     assert "Diese Hinweise sind informativ und blockieren den eBay-Schritt nicht automatisch." in detail.text
-    assert "Noch offen vor dem eBay-Schritt" in detail.text
+    assert "eBay braucht noch" in detail.text
     assert "Payment Policy ist nicht konfiguriert" in detail.text
     assert "Fulfillment Policy ist nicht konfiguriert" in detail.text
     assert "Return Policy ist nicht konfiguriert" in detail.text
     assert "Merchant Location ist nicht konfiguriert" in detail.text
     assert '<button class="button button--primary" type="submit" disabled>eBay-Draft senden</button>' in detail.text
+
+
+def test_draft_detail_enables_ebay_action_when_review_and_marketplace_data_are_complete(client: TestClient):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = Draft(
+        id="draft_ready_stale",
+        sku=derive_sku("draft_ready_stale"),
+        source={
+            "images": [{
+                "id": "img_01",
+                "originalFilename": "front.jpg",
+                "storagePath": "/data/test/front.jpg",
+                "mimeType": "image/jpeg",
+                "order": 1,
+                "kind": "original",
+            }],
+            "notes": "Kleine Lampe",
+        },
+        listing={
+            "title": "Lampe",
+            "descriptionHtml": "<p>Kleine Lampe</p>",
+            "condition": "gut",
+            "categorySuggestion": "123",
+        },
+    )
+    draft.workflow.status = WorkflowStatus.DRAFT
+    draft.workflow.needs_review = True
+    repository.save_draft(draft)
+
+    EbayAuthStore(settings.database_path).save_tokens(EbayTokenData(refresh_token="refresh-123"))
+    EbayConfigStore(settings.database_path).save_selected_configuration(
+        payment_policy_id="pay-1",
+        fulfillment_policy_id="ful-1",
+        return_policy_id="ret-1",
+        merchant_location_key="home",
+    )
+
+    detail = client.get(f"/drafts/{draft.id}")
+
+    assert "Bereit für eBay-Draft" in detail.text
+    assert '<button class="button button--primary" type="submit" >eBay-Draft senden</button>' in detail.text
+
+
+def test_draft_detail_shows_category_suggestions_as_choices(client: TestClient):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = Draft(
+        id="draft_category_choices",
+        sku=derive_sku("draft_category_choices"),
+        source={
+            "images": [{
+                "id": "img_01",
+                "originalFilename": "front.jpg",
+                "storagePath": "/data/test/front.jpg",
+                "mimeType": "image/jpeg",
+                "order": 1,
+                "kind": "original",
+            }],
+            "notes": "Audi RS3",
+        },
+        listing={
+            "title": "Audi RS3",
+            "descriptionHtml": "<p>Audi RS3</p>",
+            "condition": "gebraucht",
+            "categorySuggestion": "84992",
+            "attributes": {
+                "ebayCategory": {
+                    "state": "resolved",
+                    "query": "Fahrzeuge & Motorräder > Autos > Audi > RS3",
+                    "original_query": "Fahrzeuge & Motorräder > Autos > Audi > RS3",
+                    "selected_id": "84992",
+                    "selected_name": "Autos",
+                    "selected_path": "Spielzeug > Spielzeugautos > Autos",
+                    "suggestions": [
+                        {"id": "84992", "name": "Autos", "path": "Spielzeug > Spielzeugautos > Autos"},
+                        {"id": "9801", "name": "Automobile", "path": "Auto & Motorrad > Fahrzeuge > Automobile"},
+                    ],
+                    "message": "",
+                }
+            },
+        },
+    )
+    repository.save_draft(draft)
+
+    detail = client.get(f"/drafts/{draft.id}")
+
+    assert 'value="84992" checked' in detail.text
+    assert 'value="9801"' in detail.text
+    assert "Spielzeug &gt; Spielzeugautos &gt; Autos" in detail.text
+    assert "Auto &amp; Motorrad &gt; Fahrzeuge &gt; Automobile" in detail.text
+
+
+def test_review_post_persists_selected_category_choice(client: TestClient):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = Draft(
+        id="draft_category_select",
+        sku=derive_sku("draft_category_select"),
+        source={
+            "images": [{
+                "id": "img_01",
+                "originalFilename": "front.jpg",
+                "storagePath": "/data/test/front.jpg",
+                "mimeType": "image/jpeg",
+                "order": 1,
+                "kind": "original",
+            }],
+            "notes": "Audi RS3",
+        },
+        listing={
+            "title": "Audi RS3",
+            "descriptionHtml": "<p>Audi RS3</p>",
+            "condition": "gebraucht",
+            "categorySuggestion": "84992",
+            "attributes": {
+                "ebayCategory": {
+                    "state": "resolved",
+                    "query": "Fahrzeuge & Motorräder > Autos > Audi > RS3",
+                    "original_query": "Fahrzeuge & Motorräder > Autos > Audi > RS3",
+                    "selected_id": "84992",
+                    "selected_name": "Autos",
+                    "selected_path": "Spielzeug > Spielzeugautos > Autos",
+                    "suggestions": [
+                        {"id": "84992", "name": "Autos", "path": "Spielzeug > Spielzeugautos > Autos"},
+                        {"id": "9801", "name": "Automobile", "path": "Auto & Motorrad > Fahrzeuge > Automobile"},
+                    ],
+                    "message": "",
+                }
+            },
+        },
+    )
+    repository.save_draft(draft)
+
+    response = client.post(
+        f"/drafts/{draft.id}/review",
+        data={
+            "title": "Audi RS3",
+            "condition": "gebraucht",
+            "description": "Audi RS3",
+            "included_items": "Audi RS3",
+            "category_suggestion": "84992",
+            "selected_category_suggestion": "9801",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    updated = repository.get_draft(draft.id)
+    assert updated is not None
+    assert updated.listing.category_suggestion == "9801"
+    assert updated.listing.attributes["ebayCategory"]["selected_id"] == "9801"
+    assert updated.listing.attributes["ebayCategory"]["selected_name"] == "Automobile"
 
 
 def test_draft_detail_blocks_non_numeric_ebay_category_id(client: TestClient):
@@ -344,7 +496,7 @@ def test_draft_detail_shows_retry_result_for_retryable_ebay_error(client: TestCl
             "categorySuggestion": "123",
         },
     )
-    draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
+    draft.workflow.status = WorkflowStatus.DRAFT
     draft.workflow.needs_review = False
     draft.marketplace.ebay.offer_data["lastError"] = "eBay timeout"
     repository.save_draft(draft)

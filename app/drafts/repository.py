@@ -6,6 +6,8 @@ from pathlib import Path
 from app.db.base import get_connection
 from app.drafts.models import Draft, WorkflowStatus, utc_now
 
+LEGACY_DRAFT_STATUSES = ("classified", "needs_attention", "ready_for_review", "ready_for_marketplace", "blocked")
+
 
 class DraftRepository:
     def __init__(self, database_path: Path):
@@ -66,8 +68,13 @@ class DraftRepository:
         query = "SELECT data_json FROM drafts"
         params: tuple[object, ...] = ()
         if status is not None:
-            query += " WHERE status = ?"
-            params = (status.value,)
+            if status is WorkflowStatus.DRAFT:
+                placeholders = ", ".join("?" for _ in LEGACY_DRAFT_STATUSES)
+                query += f" WHERE status = ? OR status IN ({placeholders})"
+                params = (status.value, *LEGACY_DRAFT_STATUSES)
+            else:
+                query += " WHERE status = ?"
+                params = (status.value,)
         query += " ORDER BY created_at ASC"
 
         with get_connection(self.database_path) as connection:

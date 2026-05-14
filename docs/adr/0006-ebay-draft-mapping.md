@@ -72,7 +72,8 @@ Für den ersten Offer-Entwurf sollen mindestens ableitbar sein:
 
 ### Interne Workflow-Felder
 
-- `workflow.status` steuert, ob ein eBay-Offer überhaupt erzeugt werden darf
+- Die aktuelle eBay-Readiness wird aus Draft-Daten, Review-Bewertung, eBay-Konfiguration und Auth-Status abgeleitet
+- `workflow.status` speichert nur echte Lebenszyklus-/Systemzustände wie `draft`, `offer_created`, `published` oder `error`
 - `marketplace.ebay.inventoryItemKey` speichert eBay-Bezug
 - `marketplace.ebay.offerId` speichert den unveröffentlichten Offer
 

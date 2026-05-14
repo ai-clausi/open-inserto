@@ -131,7 +131,8 @@ Optional später:
 
 Wenn Informationen fehlen oder unklar sind:
 
-- Draft bleibt im Review-Zustand
+- Draft bleibt lokal im Lebenszyklusstatus `draft`
+- Review-Zustand wird aus den aktuellen Draft-Daten berechnet
 - `workflow.missingInformation` wird gefüllt
 - Nutzer muss bestätigen oder ergänzen
 

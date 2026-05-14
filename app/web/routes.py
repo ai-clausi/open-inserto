@@ -1,3 +1,6 @@
+from pathlib import Path
+from dataclasses import dataclass
+
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -6,13 +9,16 @@ from app.core.config import get_settings
 from app.drafts.analysis import apply_analysis_result, build_draft_analysis_service
 from app.drafts.repository import DraftRepository
 from app.drafts.models import WorkflowStatus
+from app.drafts.rendering import refresh_listing_description
 from app.drafts.review import (
     CORE_FIELDS,
     OPTIONAL_FIELDS,
     get_analysis_state,
     evaluate_review_state,
     get_confidence_notes,
+    get_field_sources,
     get_missing_core_fields,
+    get_original_input,
     get_review_form_values,
     get_review_metadata,
     update_draft_from_review,
@@ -32,22 +38,63 @@ templates = Jinja2Templates(directory="app/templates")
 EXTRA_FIELDS = [
     ("product_name", "Produktname"),
     ("condition", "Zustand"),
-    ("accessories", "Zubehör"),
+    ("accessories", "Lieferumfang"),
     ("hints", "Hinweise"),
 ]
 
 
 STATUS_LABELS = {
     WorkflowStatus.DRAFT: "Neu",
-    WorkflowStatus.CLASSIFIED: "Klassifiziert",
-    WorkflowStatus.NEEDS_ATTENTION: "Braucht Aufmerksamkeit",
-    WorkflowStatus.READY_FOR_REVIEW: "Bereit fürs Review",
-    WorkflowStatus.READY_FOR_MARKETPLACE: "Bereit für eBay",
     WorkflowStatus.OFFER_CREATED: "eBay-Draft erstellt",
     WorkflowStatus.PUBLISHED: "Veröffentlicht",
-    WorkflowStatus.BLOCKED: "Blockiert",
     WorkflowStatus.ERROR: "Fehler",
 }
+
+
+@dataclass(slots=True)
+class DraftDisplayStatus:
+    value: str
+    label: str
+    tone: str
+
+
+def build_draft_display_status(
+    draft,
+    *,
+    marketplace_readiness_errors: list[str],
+    review_state: str | None = None,
+) -> DraftDisplayStatus:
+    if review_state is None:
+        review_state = evaluate_review_state(draft)
+
+    if draft.marketplace.ebay.offer_id or draft.workflow.status is WorkflowStatus.OFFER_CREATED:
+        return DraftDisplayStatus("offer_created", "eBay-Draft erstellt", "success")
+    if draft.workflow.status is WorkflowStatus.PUBLISHED:
+        return DraftDisplayStatus("published", "Veröffentlicht", "success")
+    if draft.workflow.status is WorkflowStatus.ERROR:
+        return DraftDisplayStatus("error", "Fehler", "warning")
+
+    if review_state == "blocked":
+        return DraftDisplayStatus("blocked", "Blockiert", "warning")
+    if review_state == "needs_attention":
+        return DraftDisplayStatus("needs_attention", "Angaben ergänzen", "warning")
+
+    ebay_error = str(draft.marketplace.ebay.offer_data.get("lastError") or "").strip()
+    if marketplace_readiness_errors:
+        if any("ist nicht konfiguriert" in item or "eBay ist noch nicht verbunden" in item for item in marketplace_readiness_errors):
+            return DraftDisplayStatus("ebay_setup", "eBay einrichten", "warning")
+        return DraftDisplayStatus("marketplace_attention", "eBay-Angaben ergänzen", "warning")
+    if ebay_error:
+        return DraftDisplayStatus("retry", "Erneut senden möglich", "neutral")
+    return DraftDisplayStatus("ready_for_ebay", "Bereit für eBay", "success")
+
+
+def review_status_label(review_state: str) -> str:
+    if review_state == "ready":
+        return "Kernangaben vollständig"
+    if review_state == "blocked":
+        return "Blockiert"
+    return "Angaben ergänzen"
 
 
 def build_context(request: Request, **extra):
@@ -183,17 +230,35 @@ def index(request: Request):
 def draft_list(request: Request):
     settings = get_settings()
     repository = DraftRepository(settings.database_path)
+    auth_store = EbayAuthStore(settings.database_path)
+    config_store = EbayConfigStore(settings.database_path)
+    ebay_auth_connected = has_usable_auth_tokens(auth_store.get_tokens())
+    effective_config = config_store.get_effective_configuration()
     drafts = sorted(
         repository.list_drafts(),
         key=lambda draft: draft.workflow.last_updated_at,
         reverse=True,
     )
-    draft_items = [
-        {
+    draft_items = []
+    for draft in drafts:
+        if refresh_listing_description(draft):
+            repository.save_draft(draft)
+        marketplace_readiness_errors = collect_marketplace_readiness_errors(
+            draft,
+            effective_config,
+            auth_connected=ebay_auth_connected,
+        )
+        review_state = evaluate_review_state(draft)
+        display_status = build_draft_display_status(
+            draft,
+            marketplace_readiness_errors=marketplace_readiness_errors,
+            review_state=review_state,
+        )
+        draft_items.append(
+            {
             "id": draft.id,
             "sku": draft.sku,
-            "status": draft.workflow.status,
-            "status_label": STATUS_LABELS.get(draft.workflow.status, draft.workflow.status.value),
+            "status": display_status,
             "last_updated_at": draft.workflow.last_updated_at.strftime("%d.%m.%Y, %H:%M Uhr"),
             "created_at": draft.workflow.created_at.strftime("%d.%m.%Y, %H:%M Uhr"),
             "detail_url": f"/drafts/{draft.id}",
@@ -202,9 +267,8 @@ def draft_list(request: Request):
             "image_url": f"/{draft.source.images[0].storage_path}" if draft.source.images else None,
             "image_alt": draft.source.images[0].original_filename if draft.source.images else "Kein Vorschaubild vorhanden",
             "analysis_state": get_analysis_state(draft),
-        }
-        for draft in drafts
-    ]
+            }
+        )
     return templates.TemplateResponse(
         request,
         "draft_list.html",
@@ -287,6 +351,8 @@ def draft_detail(request: Request, draft_id: str):
     draft = repository.get_draft(draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
+    if refresh_listing_description(draft):
+        repository.save_draft(draft)
 
     auth_tokens = auth_store.get_tokens()
     ebay_auth_connected = has_usable_auth_tokens(auth_tokens)
@@ -294,17 +360,17 @@ def draft_detail(request: Request, draft_id: str):
     marketplace_readiness_errors = collect_marketplace_readiness_errors(
         draft,
         effective_config,
-        include_workflow_status=False,
         auth_connected=ebay_auth_connected,
     )
     marketplace_notes = collect_marketplace_notes(draft)
-    ebay_action_disabled = (
-        draft.workflow.status not in {WorkflowStatus.READY_FOR_MARKETPLACE, WorkflowStatus.ERROR}
-        or bool(marketplace_readiness_errors)
-    )
-
     review_state = evaluate_review_state(draft)
-    review_status_label = "Review abgeschlossen" if not draft.workflow.needs_review else "Review noch offen"
+    display_status = build_draft_display_status(
+        draft,
+        marketplace_readiness_errors=marketplace_readiness_errors,
+        review_state=review_state,
+    )
+    ebay_action_disabled = review_state != "ready" or bool(marketplace_readiness_errors)
+    current_review_status_label = review_status_label(review_state)
     if draft.marketplace.ebay.offer_id:
         marketplace_status_label = "Erfolgreich erstellt"
     elif not marketplace_readiness_errors and draft.marketplace.ebay.offer_data.get("lastError"):
@@ -331,6 +397,8 @@ def draft_detail(request: Request, draft_id: str):
             review_state=review_state,
             missing_core_fields=get_missing_core_fields(draft),
             confidence_notes=get_confidence_notes(draft),
+            field_sources=get_field_sources(draft),
+            original_input=get_original_input(draft),
             analysis_state=get_analysis_state(draft),
             category_resolution=get_category_resolution(draft),
             review_form_values=get_review_form_values(draft),
@@ -340,10 +408,9 @@ def draft_detail(request: Request, draft_id: str):
             ebay_action_disabled=ebay_action_disabled,
             ebay_effective_config=effective_config,
             marketplace_status_label=marketplace_status_label,
-            review_status_label=review_status_label,
-            review_state_label=(
-                "Kernangaben vollständig" if review_state == "ready" else "Kernangaben noch prüfen"
-            ),
+            review_status_label=current_review_status_label,
+            review_state_label=current_review_status_label,
+            display_status=display_status,
             show_technical_workflow_hint=(review_state != "ready" or bool(marketplace_readiness_errors)),
             core_fields=CORE_FIELDS,
             optional_fields=OPTIONAL_FIELDS,
@@ -381,7 +448,11 @@ async def draft_review_submit(
     model: str = Form(default=""),
     subtitle: str = Form(default=""),
     category_suggestion: str = Form(default=""),
+    selected_category_suggestion: str = Form(default=""),
     hints: str = Form(default=""),
+    product_identifier_type: str = Form(default=""),
+    product_identifier_value: str = Form(default=""),
+    key_technical_details: str = Form(default=""),
     confirm_fields: list[str] = Form(default_factory=list),
     action: str = Form(default="save"),
 ):
@@ -390,6 +461,8 @@ async def draft_review_submit(
     draft = repository.get_draft(draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
+
+    submitted_category_suggestion = selected_category_suggestion.strip() or category_suggestion.strip()
 
     update_draft_from_review(
         draft,
@@ -400,12 +473,81 @@ async def draft_review_submit(
         brand=brand,
         model=model,
         subtitle=subtitle,
-        category_suggestion=category_suggestion,
+        category_suggestion=submitted_category_suggestion,
         hints=hints,
+        product_identifier_type=product_identifier_type,
+        product_identifier_value=product_identifier_value,
+        key_technical_details=key_technical_details,
         confirm_fields=confirm_fields,
         action=action,
     )
-    resolve_category_suggestion_for_draft(draft, settings)
+    resolve_category_suggestion_for_draft(
+        draft,
+        settings,
+        preserve_numeric_id=bool(submitted_category_suggestion and submitted_category_suggestion.isdigit()),
+    )
+    repository.save_draft(draft)
+    return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/drafts/{draft_id}/images", response_class=HTMLResponse)
+async def draft_add_images(
+    draft_id: str,
+    images: list[UploadFile] = File(default_factory=list),
+):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    service = DraftUploadService(settings.data_dir)
+    assets = [
+        UploadAsset(filename=image.filename, content_type=image.content_type, stream=image.file)
+        for image in images
+        if image.filename
+    ]
+    try:
+        service.append_images_to_draft(draft, files=assets)
+    except UploadValidationError as exc:
+        draft.marketplace.ebay.offer_data["lastError"] = str(exc)
+    finally:
+        for image in images:
+            await image.close()
+
+    repository.save_draft(draft)
+    return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/drafts/{draft_id}/images/{image_id}/delete", response_class=HTMLResponse)
+def draft_delete_image(draft_id: str, image_id: str):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    removed = None
+    remaining = []
+    for image in draft.source.images:
+        if image.id == image_id:
+            removed = image
+        else:
+            remaining.append(image)
+    if removed is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    image_path = Path(removed.storage_path)
+    if not image_path.is_absolute():
+        image_path = settings.project_dir / image_path
+    try:
+        image_path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    for index, image in enumerate(remaining, start=1):
+        image.order = index
+    draft.source.images = remaining
     repository.save_draft(draft)
     return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
 

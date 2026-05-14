@@ -57,8 +57,8 @@
             {% else %}
               <div class="draft-list-card__image-placeholder" aria-hidden="true">Kein Bild</div>
             {% endif %}
-            <span class="draft-list-card__status-badge {% if draft.status.value in ['offer_created', 'published'] %}draft-list-card__status-badge--success{% elif draft.status.value in ['needs_attention', 'blocked', 'error'] %}draft-list-card__status-badge--warning{% else %}draft-list-card__status-badge--neutral{% endif %}">
-              {{ draft.status_label }}
+            <span class="draft-list-card__status-badge draft-list-card__status-badge--{{ draft.status.tone }}">
+              {{ draft.status.label }}
             </span>
           </a>
 

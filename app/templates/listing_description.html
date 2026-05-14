@@ -29,7 +29,7 @@
       {{ row_html('Hersteller:', manufacturer) }}
       {% endif %}
 
-      {{ row_html('Produkt:', product_name) }}
+      {{ row_html('Artikel:', product_name) }}
 
       {% if product_identifier_value %}
       {{ row_html((product_identifier_type or 'Modell-Nummer') ~ ':', product_identifier_value) }}
@@ -55,6 +55,11 @@
       {% if description_html %}
       {{ spacer_row() }}
       {{ row_html('Beschreibung:', description_html) }}
+      {% endif %}
+
+      {% if key_technical_details_html %}
+      {{ spacer_row() }}
+      {{ row_html('Relevante Details:', key_technical_details_html) }}
       {% endif %}
 
       {% if included_items_html %}

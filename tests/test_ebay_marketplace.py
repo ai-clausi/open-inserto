@@ -81,7 +81,7 @@ def make_draft(tmp_path) -> Draft:
             "priceSuggestion": 199.99,
         },
     )
-    draft.workflow.status = WorkflowStatus.READY_FOR_MARKETPLACE
+    draft.workflow.status = WorkflowStatus.DRAFT
     draft.workflow.needs_review = False
     return draft
 
@@ -110,6 +110,22 @@ def test_mapping_builds_inventory_and_offer_payloads(tmp_path):
     assert "availableQuantity" not in offer_payload
     assert offer_payload["pricingSummary"]["auctionStartPrice"]["value"] == "199.99"
     assert offer_payload["pricingSummary"]["auctionStartPrice"]["currency"] == "EUR"
+
+
+def test_mapping_sends_product_identifiers_and_key_details_to_ebay(tmp_path):
+    settings = make_settings(tmp_path)
+    draft = make_draft(tmp_path)
+    draft.listing.attributes["product_identifier_type"] = "EAN"
+    draft.listing.attributes["product_identifier_value"] = "1234567890123"
+    draft.listing.attributes["keyTechnicalDetails"] = ["Bluetooth: 5.3", "Anschlüsse: 2x HDMI, 1x DisplayPort"]
+    draft.marketplace.ebay.image_urls = ["https://i.example.test/01-original.jpg"]
+
+    inventory_payload = build_inventory_item_payload(draft, settings)
+
+    assert inventory_payload["product"]["ean"] == ["1234567890123"]
+    assert inventory_payload["product"]["aspects"]["EAN"] == ["1234567890123"]
+    assert inventory_payload["product"]["aspects"]["Bluetooth"] == ["5.3"]
+    assert inventory_payload["product"]["aspects"]["Anschlüsse"] == ["2x HDMI, 1x DisplayPort"]
 
 
 def test_service_creates_offer_and_persists_marketplace_refs(tmp_path):
@@ -175,7 +191,7 @@ def test_service_blocks_draft_when_required_fields_are_missing(tmp_path):
     service = EbayMarketplaceService(settings=settings, repository=repository, client=FakeEbayClient(), config_store=config_store)
     updated = service.create_unpublished_offer_for_draft(draft.id)
 
-    assert updated.workflow.status is WorkflowStatus.BLOCKED
+    assert updated.workflow.status is WorkflowStatus.DRAFT
     assert any("Kategorie fehlt" in item for item in updated.workflow.missing_information)
 
 
@@ -211,7 +227,7 @@ def test_service_clears_tokens_and_keeps_draft_retryable_on_auth_error(tmp_path)
     finally:
         client.close()
 
-    assert updated.workflow.status is WorkflowStatus.READY_FOR_MARKETPLACE
+    assert updated.workflow.status is WorkflowStatus.DRAFT
     assert updated.workflow.missing_information == []
     assert "refresh token is invalid" in updated.marketplace.ebay.offer_data["lastError"]
     stored_tokens = auth_store.get_tokens()
@@ -318,5 +334,5 @@ def test_service_blocks_when_selected_location_is_missing_for_connected_account(
     )
     updated = service.create_unpublished_offer_for_draft(draft.id)
 
-    assert updated.workflow.status is WorkflowStatus.BLOCKED
+    assert updated.workflow.status is WorkflowStatus.DRAFT
     assert any("Merchant Location 'missing-location' existiert im verbundenen eBay-Account nicht" in item for item in updated.workflow.missing_information)

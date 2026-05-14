@@ -33,6 +33,9 @@ class OpenAIVisionAnalyzerClient:
                     "description": {"type": "string"},
                     "brand": {"type": "string"},
                     "model": {"type": "string"},
+                    "productIdentifierType": {"type": "string"},
+                    "productIdentifierValue": {"type": "string"},
+                    "keyTechnicalDetails": {"type": "array", "items": {"type": "string"}},
                     "includedItems": {"type": "array", "items": {"type": "string"}},
                     "issues": {"type": "array", "items": {"type": "string"}},
                     "categorySuggestion": {"type": "string"},
@@ -46,6 +49,9 @@ class OpenAIVisionAnalyzerClient:
                     "description",
                     "brand",
                     "model",
+                    "productIdentifierType",
+                    "productIdentifierValue",
+                    "keyTechnicalDetails",
                     "includedItems",
                     "issues",
                     "categorySuggestion",
@@ -61,7 +67,24 @@ class OpenAIVisionAnalyzerClient:
             "Analysiere die Bilder zusammen mit den Zusatzinfos für einen Verkaufsentwurf. "
             "Antworte ausschließlich im vorgegebenen JSON-Schema. "
             "Nutze sichtbare Bildinhalte plus notes und user_input gemeinsam. "
-            "Fülle description als kurze, nüchterne Produktbeschreibung in 1-3 Sätzen. "
+            "Fülle description als sachlichen eBay-Beschreibungstext im Stil "
+            "'Angeboten wird ... aus dem Hause ...'. Beschreibe nur beobachtbare oder vom Nutzer genannte Eigenschaften. "
+            "Vermeide Werbesprache und unbelegte objektive Qualitätsbehauptungen wie 'überzeugt', 'ideal', 'brillant', "
+            "'farbintensiv' oder 'klar', außer sie wurden vom Nutzer als persönliche Einschätzung genannt. "
+            "Subjektive Eindrücke aus notes/user_input müssen als Ich-Aussage formuliert werden, z. B. "
+            "'Mich hat ... überzeugt' oder 'Ich habe ... genutzt'. "
+            "Halte Mängel knapp getrennt in issues. "
+            "Fülle title als reinen Artikelnamen ohne Zustandswort wie gebraucht, defekt oder neu. "
+            "Fülle includedItems mit dem eigentlichen Artikel plus allen ausdrücklich genannten Zubehörteilen. "
+            "Wenn auf Bildern eine EAN/GTIN, MPN, Artikelnummer oder eindeutige Modellbezeichnung sichtbar ist, "
+            "fülle productIdentifierType mit EAN, GTIN, MPN, Modell-Nummer oder Artikelnummer und productIdentifierValue mit dem Wert. "
+            "Übernimm sichtbare oder sicher genannte entscheidende technische Eckdaten in keyTechnicalDetails, "
+            "z. B. Bluetooth-Version, WiFi-Standard, Mobilfunkstandard oder Anschlüsse wie 2x HDMI, 1x DisplayPort. "
+            "Keine vollständigen Datenblätter erstellen und nichts raten; nur relevante Details für die Produktart nennen. "
+            "Fülle issues nur mit inseratstauglichen Hinweisen zu Mängeln, fehlendem Lieferumfang oder offenen Prüfpunkten. "
+            "Verwende dort niemals Bildanalyse-Formulierungen wie 'erkennbar', 'sichtbar', 'auf den Bildern', "
+            "'scheint', 'wirkt' oder 'konnte nicht erkannt werden'. Formuliere stattdessen verkäufernah, z. B. "
+            "'Fernbedienung ist nicht enthalten' oder 'Das Gerät zeigt Gebrauchsspuren'. "
             "Wenn etwas unklar ist, nenne es explizit in missingInformation und confidenceNotes. "
             f"notes={notes!r}; user_input={user_input!r}"
         )

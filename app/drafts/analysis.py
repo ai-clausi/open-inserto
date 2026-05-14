@@ -10,21 +10,22 @@ from typing import Any, Protocol
 from PIL import Image, ImageOps
 
 from app.core.config import Settings
-from app.drafts.models import Draft, ListingData, WorkflowStatus
+from app.drafts.included_items import normalize_included_items
+from app.drafts.models import Draft, ListingData
 from app.drafts.rendering import render_listing_description
 from app.drafts.vision import OpenAIVisionAnalyzerClient
 
 logger = logging.getLogger(__name__)
 
-VISION_IMAGE_MAX_SIDE = 1280
-VISION_IMAGE_QUALITY = 80
-VISION_IMAGE_DETAIL = "auto"
+VISION_IMAGE_MAX_SIDE = 1024
+VISION_IMAGE_QUALITY = 72
+VISION_IMAGE_DETAIL = "low"
+VISION_MAX_IMAGES = 4
 
 
 @dataclass(slots=True)
 class DraftAnalysisResult:
     listing: ListingData
-    workflow_status: WorkflowStatus
     needs_review: bool = True
     missing_information: list[str] | None = None
     confidence_notes: list[str] | None = None
@@ -51,7 +52,8 @@ class HeuristicDraftAnalysisService:
         product_name = _clean_text(user_input.get("product_name"))
         condition = _clean_text(user_input.get("condition"))
         accessories = _split_lines_or_csv(user_input.get("accessories"))
-        issues = _collect_issues(user_input.get("hints"), notes)
+        included_items = normalize_included_items(product_name, accessories)
+        issues = _collect_issues(user_input.get("hints"))
 
         missing_information: list[str] = []
         confidence_notes: list[str] = [
@@ -65,8 +67,8 @@ class HeuristicDraftAnalysisService:
         if not notes and not issues:
             missing_information.append("Beschreibung unvollständig")
 
-        if not accessories:
-            confidence_notes.append("Zubehör wurde nicht sicher erkannt und bleibt leer, bis es bestätigt wird.")
+        if len(included_items) <= 1:
+            confidence_notes.append("Kein weiterer Lieferumfang wurde sicher erkannt und bleibt leer, bis er bestätigt wird.")
         if draft.source.images:
             confidence_notes.append(
                 f"{len(draft.source.images)} Bild(er) liegen vor, wurden aber im MVP noch nicht inhaltlich ausgewertet."
@@ -75,17 +77,10 @@ class HeuristicDraftAnalysisService:
         listing = ListingData(
             title=product_name,
             condition=condition,
-            includedItems=accessories,
+            includedItems=included_items,
             issues=issues,
             descriptionHtml="",
         )
-
-        if not draft.source.images or (not product_name and not notes):
-            workflow_status = WorkflowStatus.BLOCKED
-        elif missing_information:
-            workflow_status = WorkflowStatus.NEEDS_ATTENTION
-        else:
-            workflow_status = WorkflowStatus.READY_FOR_REVIEW
 
         rendered_draft = draft.model_copy(deep=True)
         rendered_draft.listing = listing.model_copy(deep=True)
@@ -93,7 +88,6 @@ class HeuristicDraftAnalysisService:
 
         return DraftAnalysisResult(
             listing=listing,
-            workflow_status=workflow_status,
             needs_review=True,
             missing_information=missing_information,
             confidence_notes=confidence_notes,
@@ -104,9 +98,22 @@ class HeuristicDraftAnalysisService:
 
 
 class VisionDraftAnalysisService:
-    def __init__(self, *, client: Any, project_dir: Path) -> None:
+    def __init__(
+        self,
+        *,
+        client: Any,
+        project_dir: Path,
+        image_max_side: int = VISION_IMAGE_MAX_SIDE,
+        image_quality: int = VISION_IMAGE_QUALITY,
+        image_detail: str = VISION_IMAGE_DETAIL,
+        max_images: int = VISION_MAX_IMAGES,
+    ) -> None:
         self.client = client
         self.project_dir = project_dir
+        self.image_max_side = image_max_side
+        self.image_quality = image_quality
+        self.image_detail = image_detail
+        self.max_images = max_images
 
     def analyze(self, draft: Draft) -> DraftAnalysisResult:
         image_payloads = self._build_image_payloads(draft)
@@ -118,19 +125,31 @@ class VisionDraftAnalysisService:
 
         missing_information = _normalize_string_list(payload.get("missingInformation"))
         confidence_notes = _normalize_string_list(payload.get("confidenceNotes"))
-        issues = _collect_issues(payload.get("issues"), draft.source.user_input.get("hints"), draft.source.notes)
+        description_text = _clean_text(payload.get("description")) or draft.source.notes.strip()
+        issues = _collect_issues(payload.get("issues"), draft.source.user_input.get("hints"))
+
+        title = _clean_text(payload.get("title")) or _clean_text(draft.source.user_input.get("product_name"))
+        payload_items = _normalize_string_list(payload.get("includedItems"))
+        user_accessories = _split_lines_or_csv(draft.source.user_input.get("accessories"))
 
         listing = ListingData(
-            title=_clean_text(payload.get("title")) or _clean_text(draft.source.user_input.get("product_name")),
+            title=title,
             condition=_clean_text(payload.get("condition")) or _clean_text(draft.source.user_input.get("condition")),
             brand=_clean_text(payload.get("brand")),
             model=_clean_text(payload.get("model")),
             categorySuggestion=_clean_text(payload.get("categorySuggestion")),
-            includedItems=_normalize_string_list(payload.get("includedItems"))
-            or _split_lines_or_csv(draft.source.user_input.get("accessories")),
+            includedItems=normalize_included_items(title, payload_items, user_accessories),
             issues=issues,
             descriptionHtml="",
         )
+        product_identifier_type = _clean_text(payload.get("productIdentifierType"))
+        product_identifier_value = _clean_text(payload.get("productIdentifierValue"))
+        if product_identifier_type and product_identifier_value:
+            listing.attributes["product_identifier_type"] = product_identifier_type
+            listing.attributes["product_identifier_value"] = product_identifier_value
+        key_technical_details = _normalize_string_list(payload.get("keyTechnicalDetails"))
+        if key_technical_details:
+            listing.attributes["keyTechnicalDetails"] = key_technical_details
 
         if not listing.title:
             missing_information.append("Produktname unklar")
@@ -140,37 +159,29 @@ class VisionDraftAnalysisService:
             missing_information.append("Keine Bilder vorhanden")
 
         confidence_level = _clean_text(payload.get("confidenceLevel")).lower() or "low"
-        if confidence_level == "low" or missing_information:
-            workflow_status = WorkflowStatus.NEEDS_ATTENTION
-        else:
-            workflow_status = WorkflowStatus.READY_FOR_REVIEW
-
-        if not draft.source.images or (not listing.title and not draft.source.notes):
-            workflow_status = WorkflowStatus.BLOCKED
-
         confidence_notes = list(dict.fromkeys(confidence_notes))
         confidence_notes.append(
             f"KI-/Vision-Analyzer verwendet ({self.client.__class__.__name__}, Confidence: {confidence_level})."
         )
 
         rendered_draft = draft.model_copy(deep=True)
+        rendered_draft.source.notes = description_text
         rendered_draft.listing = listing.model_copy(deep=True)
         listing.description_html = render_listing_description(rendered_draft)
 
         return DraftAnalysisResult(
             listing=listing,
-            workflow_status=workflow_status,
             needs_review=True,
             missing_information=list(dict.fromkeys(missing_information)),
             confidence_notes=confidence_notes,
-            description_text=_clean_text(payload.get("description")) or draft.source.notes.strip(),
+            description_text=description_text,
             analysis_mode="vision",
             analysis_label="KI-Analyse durchgeführt",
         )
 
     def _build_image_payloads(self, draft: Draft) -> list[dict[str, str]]:
         image_payloads: list[dict[str, str]] = []
-        for image in draft.source.images:
+        for image in draft.source.images[: self.max_images]:
             image_path = Path(image.storage_path)
             if not image_path.is_absolute():
                 image_path = self.project_dir / image_path
@@ -180,7 +191,7 @@ class VisionDraftAnalysisService:
             image_payloads.append(
                 {
                     "image_url": f"data:image/jpeg;base64,{encoded}",
-                    "detail": VISION_IMAGE_DETAIL,
+                    "detail": self.image_detail,
                 }
             )
         return image_payloads
@@ -188,11 +199,11 @@ class VisionDraftAnalysisService:
     def _encode_image_for_vision(self, image_path: Path) -> str:
         with Image.open(image_path) as image:
             normalized = ImageOps.exif_transpose(image).convert("RGB")
-            if max(normalized.size) > VISION_IMAGE_MAX_SIDE:
-                normalized.thumbnail((VISION_IMAGE_MAX_SIDE, VISION_IMAGE_MAX_SIDE), Image.Resampling.LANCZOS)
+            if max(normalized.size) > self.image_max_side:
+                normalized.thumbnail((self.image_max_side, self.image_max_side), Image.Resampling.LANCZOS)
 
             buffer = BytesIO()
-            normalized.save(buffer, format="JPEG", quality=VISION_IMAGE_QUALITY, optimize=True)
+            normalized.save(buffer, format="JPEG", quality=self.image_quality, optimize=True)
         return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
@@ -232,6 +243,10 @@ def build_draft_analysis_service(settings: Settings) -> DraftAnalysisService:
             timeout_seconds=settings.vision_timeout_seconds,
         ),
         project_dir=settings.project_dir,
+        image_max_side=settings.vision_image_max_side,
+        image_quality=settings.vision_image_quality,
+        image_detail=settings.vision_image_detail,
+        max_images=settings.vision_max_images,
     )
 
     if backend == "vision":
@@ -244,11 +259,19 @@ def build_draft_analysis_service(settings: Settings) -> DraftAnalysisService:
 
 
 def apply_analysis_result(draft: Draft, analysis: DraftAnalysisResult) -> Draft:
+    original_user_input = {
+        key: value
+        for key, value in draft.source.user_input.items()
+        if isinstance(key, str) and isinstance(value, str) and value.strip()
+    }
+    original_notes = draft.source.notes.strip()
+
     draft.listing = analysis.listing
-    draft.workflow.status = analysis.workflow_status
+    draft.listing.included_items = normalize_included_items(draft.listing.title, draft.listing.included_items)
     draft.workflow.needs_review = analysis.needs_review
     draft.workflow.missing_information = list(analysis.missing_information or [])
     draft.workflow.last_updated_at = draft.workflow.last_updated_at
+    field_sources = _build_field_sources(draft, analysis, original_user_input)
     draft.source.notes = analysis.description_text.strip()
     draft.source.user_input.update(
         {
@@ -264,6 +287,11 @@ def apply_analysis_result(draft: Draft, analysis: DraftAnalysisResult) -> Draft:
         draft.listing.attributes["confidenceNotes"] = confidence_notes
     else:
         draft.listing.attributes.pop("confidenceNotes", None)
+    draft.listing.attributes["originalInput"] = {
+        "notes": original_notes,
+        "userInput": original_user_input,
+    }
+    draft.listing.attributes["fieldSources"] = field_sources
     draft.listing.attributes["analysis"] = {
         "performed": True,
         "mode": analysis.analysis_mode,
@@ -305,9 +333,67 @@ def _collect_issues(*values: object) -> list[str]:
     seen: set[str] = set()
     for value in values:
         for item in _normalize_string_list(value):
+            item = _normalize_listing_issue_text(item)
             key = item.casefold()
             if key in seen:
                 continue
             seen.add(key)
             issues.append(item)
     return issues
+
+
+def _normalize_listing_issue_text(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return ""
+
+    lowered = text.casefold()
+    if lowered in {
+        "keine fernbedienung oder weiteres zubehör erkennbar.",
+        "keine fernbedienung oder weiteres zubehör erkennbar",
+    }:
+        return "Fernbedienung und weiteres Zubehör sind nicht enthalten."
+    if lowered.startswith("keine ") and lowered.endswith(" erkennbar."):
+        subject = text[6:-11].strip()
+        if subject:
+            return f"{subject[0].upper() + subject[1:]} nicht enthalten."
+    if lowered.startswith("keine ") and lowered.endswith(" erkennbar"):
+        subject = text[6:-10].strip()
+        if subject:
+            return f"{subject[0].upper() + subject[1:]} nicht enthalten."
+    return text
+
+
+def _build_field_sources(
+    draft: Draft,
+    analysis: DraftAnalysisResult,
+    user_input: dict[str, str],
+) -> dict[str, str]:
+    source = "KI" if analysis.analysis_mode == "vision" else "Eingabe"
+
+    field_sources: dict[str, str] = {
+        "title": source,
+        "condition": source,
+        "description": source,
+        "included_items": source,
+        "brand": source,
+        "model": source,
+        "category_suggestion": source,
+        "issues": source,
+        "product_identifier": source,
+        "key_technical_details": source,
+    }
+
+    if _clean_text(user_input.get("product_name")) == analysis.listing.title.strip():
+        field_sources["title"] = "Eingabe"
+    if _clean_text(user_input.get("condition")) == analysis.listing.condition.strip():
+        field_sources["condition"] = "Eingabe"
+    if normalize_included_items(
+        analysis.listing.title,
+        _split_lines_or_csv(user_input.get("accessories")),
+    ) == analysis.listing.included_items:
+        field_sources["included_items"] = "Eingabe"
+    if _collect_issues(user_input.get("hints")) == analysis.listing.issues:
+        field_sources["issues"] = "Eingabe"
+
+    return field_sources

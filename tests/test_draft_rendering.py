@@ -48,7 +48,7 @@ def test_render_listing_description_includes_expected_sections():
     assert "<table>" in html
     assert "<b>Hersteller:</b>" in html
     assert "<p>Nintendo</p>" in html
-    assert "<b>Produkt:</b>" in html
+    assert "<b>Artikel:</b>" in html
     assert "<p>Switch OLED</p>" in html
     assert "<b>Zustand:</b>" in html
     assert "<p>gebraucht</p>" in html
@@ -57,8 +57,9 @@ def test_render_listing_description_includes_expected_sections():
     assert "<b>Modell-Nummer:</b>" in html
     assert "<p>1234567890</p>" in html
     assert "<b>Lieferumfang:</b>" in html
-    assert "<p>Dock</p>" in html
-    assert "<p>Netzteil</p>" in html
+    assert "<p>Switch OLED</p>" in html
+    assert "<li>Dock</li>" in html
+    assert "<li>Netzteil</li>" in html
     assert "<b>Hinweise:</b>" in html
     assert "<p>kleiner Kratzer</p>" in html
 
@@ -75,13 +76,13 @@ def test_render_listing_description_omits_empty_optional_blocks():
 
     html = render_listing_description(draft)
 
-    assert "<b>Produkt:</b>" in html
+    assert "<b>Artikel:</b>" in html
     assert "<p>Switch OLED</p>" in html
     assert "Kaufdatum" not in html
     assert "Produktkennung" not in html
-    assert "Lieferumfang" not in html
+    assert "<b>Lieferumfang:</b>" in html
     assert "Hinweise" not in html
-    assert "<ul>" not in html
+    assert "<ul>" in html
     assert "<table>" in html
 
 
@@ -104,7 +105,7 @@ def test_analysis_service_populates_rendered_description_html():
 
     analysis = service.analyze(draft)
 
-    assert "<b>Produkt:</b>" in analysis.listing.description_html
+    assert "<b>Artikel:</b>" in analysis.listing.description_html
     assert "<p>Switch OLED</p>" in analysis.listing.description_html
     assert "<b>Lieferumfang:</b>" in analysis.listing.description_html
     assert "MVP-Heuristik" not in analysis.listing.description_html
@@ -130,10 +131,37 @@ def test_review_updates_rendered_description_html_from_current_draft_state():
 
     assert "<b>Hersteller:</b>" in draft.listing.description_html
     assert "<p>Valve</p>" in draft.listing.description_html
-    assert "<b>Produkt:</b>" in draft.listing.description_html
+    assert "<b>Artikel:</b>" in draft.listing.description_html
     assert "<p>Steam Deck</p>" in draft.listing.description_html
     assert "<b>Modell:</b>" in draft.listing.description_html
     assert "<p>OLED</p>" in draft.listing.description_html
     assert "<p>Portable Konsole</p>" in draft.listing.description_html
-    assert "<p>Case</p>" in draft.listing.description_html
-    assert "<p>Ladegerät</p>" in draft.listing.description_html
+    assert "<li>Steam Deck</li>" in draft.listing.description_html
+    assert "<li>Case</li>" in draft.listing.description_html
+    assert "<li>Ladegerät</li>" in draft.listing.description_html
+
+
+def test_render_listing_description_includes_key_technical_details_as_list():
+    draft = build_draft()
+    draft.listing.attributes["keyTechnicalDetails"] = ["2x HDMI", "1x DisplayPort"]
+
+    html = render_listing_description(draft)
+
+    assert "<b>Relevante Details:</b>" in html
+    assert "<li>2x HDMI</li>" in html
+    assert "<li>1x DisplayPort</li>" in html
+
+
+def test_render_listing_description_deduplicates_product_variant_from_included_items():
+    draft = build_draft()
+    draft.listing.title = "GL.iNet Mudi 7 5G NR Tri-band Wi-Fi 7 Portable Router"
+    draft.listing.included_items = [
+        "GL.iNet Mudi 7 5G NR Tri-band Wi-Fi 7 Portable Router (originalverpackt)",
+        "USB-C-Kabel",
+    ]
+
+    html = render_listing_description(draft)
+
+    assert html.count("GL.iNet Mudi 7 5G NR Tri-band Wi-Fi 7 Portable Router") == 2
+    assert "(originalverpackt)" not in html
+    assert "<li>USB-C-Kabel</li>" in html
