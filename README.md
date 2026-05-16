@@ -34,6 +34,12 @@ Hinweis: Für Container- und Remote-Szenarien ist das explizite Host-Binding auf
 pytest
 ```
 
+## eBay Production Setup
+
+Für eBay Production muss eine Marketplace Account Deletion Notification URL im eBay Developer Portal hinterlegt werden. Das ist eine eBay-Vorgabe, bevor Production-API-Zugriff möglich ist.
+
+Da Open Inserto lokal läuft, wird dieser kleine öffentliche HTTPS-Endpoint separat auf AWS Lambda betrieben. Die OpenTofu-Konfiguration liegt unter [`infra/`](infra/README.md). Lokale Secrets wie `terraform.tfvars` und Backend-Konfigurationen werden nicht versioniert; passende `.example` Dateien liegen im Repo.
+
 ## Docker
 
 ```bash

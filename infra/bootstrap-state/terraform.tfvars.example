@@ -1,0 +1,8 @@
+aws_region        = "eu-west-1"
+state_bucket_name = "your-project-opentofu-state"
+
+tags = {
+  Project     = "your-project"
+  ManagedBy   = "OpenTofu"
+  Environment = "shared"
+}

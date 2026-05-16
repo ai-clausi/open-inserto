@@ -1,0 +1,6 @@
+aws_region   = "eu-west-1"
+project_name = "your-project"
+environment  = "prod"
+
+# Do not commit the real token. Put it only into local terraform.tfvars.
+verification_token = "REPLACE_ME"

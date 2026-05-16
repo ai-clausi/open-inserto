@@ -9,3 +9,9 @@ __pycache__/
 data/*.db
 data/drafts
 .tmp-gh-issue-bodies/
+infra/**/.terraform/
+infra/**/terraform.tfvars
+infra/**/terraform.tfstate
+infra/**/terraform.tfstate.backup
+infra/**/lambda_package.zip
+infra/**/backend.hcl
