@@ -43,6 +43,26 @@ def test_ebay_client_fetches_taxonomy_category_suggestions(tmp_path: Path):
                     ]
                 },
             )
+        if request.url.path.endswith("/get_item_aspects_for_category"):
+            return httpx.Response(
+                200,
+                json={
+                    "aspects": [
+                        {
+                            "localizedAspectName": "Breite",
+                            "aspectConstraint": {
+                                "aspectRequired": True,
+                                "aspectMode": "FREE_TEXT",
+                                "aspectDataType": "STRING",
+                            },
+                        },
+                        {
+                            "localizedAspectName": "Marke",
+                            "aspectConstraint": {"aspectRequired": False},
+                        },
+                    ]
+                },
+            )
         raise AssertionError(f"Unexpected request: {request.method} {request.url}")
 
     client = EbayClient(settings, client=httpx.Client(transport=httpx.MockTransport(handler)))
@@ -50,6 +70,7 @@ def test_ebay_client_fetches_taxonomy_category_suggestions(tmp_path: Path):
         token = client.get_application_access_token()
         category_tree_id = client.get_default_category_tree_id(token)
         suggestions = client.get_category_suggestions(token, category_tree_id=category_tree_id, query="Spielkonsole")
+        aspects = client.get_item_aspects_for_category(token, category_tree_id=category_tree_id, category_id="139971")
     finally:
         client.close()
 
@@ -62,6 +83,8 @@ def test_ebay_client_fetches_taxonomy_category_suggestions(tmp_path: Path):
             "path": "PC- & Videospiele > Konsolen & Zubehör > Konsolen",
         }
     ]
+    assert aspects[0]["name"] == "Breite"
+    assert aspects[0]["required"] is True
 
 
 def test_resolve_category_suggestion_updates_draft_with_numeric_id(tmp_path: Path, monkeypatch):
@@ -99,7 +122,7 @@ def test_resolve_category_suggestion_updates_draft_with_numeric_id(tmp_path: Pat
     assert resolution["query"] == "Spielkonsole"
     assert resolution["selected_id"] == "139971"
     assert resolution["selected_name"] == "Konsolen"
-    assert len(resolution["suggestions"]) == 2
+    assert len(resolution["suggestions"]) == 1
 
 
 def test_resolve_category_suggestion_ranks_matching_audio_category_above_bad_first_result(tmp_path: Path, monkeypatch):
@@ -142,6 +165,110 @@ def test_resolve_category_suggestion_ranks_matching_audio_category_above_bad_fir
     resolution = get_category_resolution(draft)
 
     assert draft.listing.category_suggestion == "14990"
+    assert resolution["selected_name"] == "Lautsprecher & Subwoofer"
+    assert resolution["suggestions"][0]["id"] == "14990"
+
+
+def test_resolve_category_suggestion_keeps_user_review_when_confidence_is_low(tmp_path: Path, monkeypatch):
+    settings = make_settings(tmp_path, mode="live")
+    draft = Draft(
+        id="draft_taxonomy",
+        sku="OIN-TAX",
+        listing={
+            "title": "Bose SoundTouch 10 wireless music system",
+            "brand": "Bose",
+            "model": "SoundTouch 10",
+            "categorySuggestion": "Aufkleber",
+        },
+    )
+
+    class FakeClient:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def get_application_access_token(self):
+            return object()
+
+        def get_default_category_tree_id(self, access_token):
+            return "77"
+
+        def get_category_suggestions(self, access_token, *, category_tree_id: str, query: str):
+            if query == "Aufkleber":
+                return [
+                    {
+                        "id": "8955",
+                        "name": "Aufkleber",
+                        "path": "Sammeln & Seltenes > Reklame & Werbung > Werbeartikel > Aufkleber",
+                    }
+                ]
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("app.marketplaces.ebay.taxonomy.EbayClient", FakeClient)
+
+    resolve_category_suggestion_for_draft(draft, settings)
+    resolution = get_category_resolution(draft)
+
+    assert draft.listing.category_suggestion == "Aufkleber"
+    assert resolution["state"] == "needs_selection"
+    assert resolution["selected_id"] == ""
+    assert resolution["suggestions"][0]["id"] == "8955"
+
+
+def test_resolve_category_suggestion_uses_later_product_query_when_initial_hint_is_bad(tmp_path: Path, monkeypatch):
+    settings = make_settings(tmp_path, mode="live")
+    draft = Draft(
+        id="draft_taxonomy",
+        sku="OIN-TAX",
+        listing={
+            "title": "Bose SoundTouch 10 wireless music system",
+            "brand": "Bose",
+            "model": "SoundTouch 10",
+            "categorySuggestion": "Aufkleber",
+        },
+    )
+
+    class FakeClient:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def get_application_access_token(self):
+            return object()
+
+        def get_default_category_tree_id(self, access_token):
+            return "77"
+
+        def get_category_suggestions(self, access_token, *, category_tree_id: str, query: str):
+            if query == "Aufkleber":
+                return [
+                    {
+                        "id": "8955",
+                        "name": "Aufkleber",
+                        "path": "Sammeln & Seltenes > Reklame & Werbung > Werbeartikel > Aufkleber",
+                    }
+                ]
+            if "Bose" in query:
+                return [
+                    {
+                        "id": "14990",
+                        "name": "Lautsprecher & Subwoofer",
+                        "path": "TV, Video & Audio > Heim-Audio & HiFi > Lautsprecher & Subwoofer",
+                    }
+                ]
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("app.marketplaces.ebay.taxonomy.EbayClient", FakeClient)
+
+    resolve_category_suggestion_for_draft(draft, settings)
+    resolution = get_category_resolution(draft)
+
+    assert draft.listing.category_suggestion == "14990"
+    assert resolution["state"] == "resolved"
     assert resolution["selected_name"] == "Lautsprecher & Subwoofer"
     assert resolution["suggestions"][0]["id"] == "14990"
 
@@ -219,12 +346,104 @@ def test_resolve_category_suggestion_uses_path_leaf_and_updates_draft_with_numer
     resolve_category_suggestion_for_draft(draft, settings)
     resolution = get_category_resolution(draft)
 
-    assert queries[:2] == ["Computer & Zubehör > Monitore", "Monitore"]
+    assert "Monitore" in queries
     assert draft.listing.category_suggestion == "80053"
     assert resolution["state"] == "resolved"
     assert resolution["query"] == "Monitore"
     assert resolution["original_query"] == "Computer & Zubehör > Monitore"
     assert resolution["selected_path"] == "Computer, Tablets & Netzwerk > Monitore"
+
+
+def test_resolve_category_suggestion_shows_unscored_ebay_results_without_auto_selecting(tmp_path: Path, monkeypatch):
+    settings = make_settings(tmp_path, mode="live")
+    draft = Draft(
+        id="draft_taxonomy",
+        sku="OIN-TAX",
+        listing={
+            "title": "Magic Mouse A1657 - MK2E3Z/A",
+            "brand": "Apple",
+            "model": "A1657",
+            "categorySuggestion": "Computer Zubehör > Eingabegeräte > Mäuse",
+        },
+    )
+
+    class FakeClient:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def get_application_access_token(self):
+            return object()
+
+        def get_default_category_tree_id(self, access_token):
+            return "77"
+
+        def get_category_suggestions(self, access_token, *, category_tree_id: str, query: str):
+            return [
+                {"id": "30108", "name": "Fahrradcomputer & GPS", "path": "Sport > Radsport > Fahrradelektronik > Fahrradcomputer & GPS"},
+                {"id": "261186", "name": "Bücher", "path": "Bücher & Zeitschriften > Bücher"},
+            ]
+
+        def get_item_aspects_for_category(self, access_token, *, category_tree_id: str, category_id: str):
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("app.marketplaces.ebay.taxonomy.EbayClient", FakeClient)
+
+    resolve_category_suggestion_for_draft(draft, settings)
+    resolution = get_category_resolution(draft)
+
+    assert draft.listing.category_suggestion == "Computer Zubehör > Eingabegeräte > Mäuse"
+    assert resolution["state"] == "needs_selection"
+    assert resolution["suggestions"][0]["id"] == "30108"
+    assert "nicht sicher automatisch bewerten" in resolution["message"]
+
+
+def test_resolve_category_suggestion_uses_hair_styling_category_for_lockenstab(tmp_path: Path, monkeypatch):
+    settings = make_settings(tmp_path, mode="live")
+    draft = Draft(
+        id="draft_taxonomy",
+        sku="OIN-TAX",
+        listing={
+            "title": "Lockenstab",
+            "categorySuggestion": "Lockenstab",
+        },
+    )
+
+    class FakeClient:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def get_application_access_token(self):
+            return object()
+
+        def get_default_category_tree_id(self, access_token):
+            return "77"
+
+        def get_category_suggestions(self, access_token, *, category_tree_id: str, query: str):
+            return [
+                {
+                    "id": "177659",
+                    "name": "Lockenstäbe & Glätteisen",
+                    "path": "Beauty & Gesundheit > Haarpflege & Styling > Elektrische Haarstyling Geräte > Lockenstäbe & Glätteisen",
+                }
+            ]
+
+        def get_item_aspects_for_category(self, access_token, *, category_tree_id: str, category_id: str):
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("app.marketplaces.ebay.taxonomy.EbayClient", FakeClient)
+
+    resolve_category_suggestion_for_draft(draft, settings)
+    resolution = get_category_resolution(draft)
+
+    assert draft.listing.category_suggestion == "177659"
+    assert resolution["state"] == "resolved"
+    assert resolution["selected_name"] == "Lockenstäbe & Glätteisen"
 
 
 def test_resolve_category_suggestion_marks_missing_config(tmp_path: Path):

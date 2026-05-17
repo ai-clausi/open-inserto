@@ -7,6 +7,7 @@ from app.drafts.analysis import _collect_issues, _split_lines_or_csv
 from app.drafts.included_items import normalize_included_items
 from app.drafts.models import Draft
 from app.drafts.rendering import render_listing_description
+from app.marketplaces.ebay.configuration import normalize_shipping_profile
 
 ReviewState = Literal["ready", "needs_attention", "blocked"]
 
@@ -149,6 +150,7 @@ def update_draft_from_review(
     product_identifier_type: str = "",
     product_identifier_value: str = "",
     key_technical_details: str = "",
+    shipping_profile: str = "",
     confirm_fields: list[str] | None = None,
     action: str = "save",
 ) -> Draft:
@@ -166,7 +168,7 @@ def update_draft_from_review(
     }
     previous_sources = get_field_sources(draft)
 
-    draft.listing.title = title.strip()
+    draft.listing.title = _normalize_title_casing(title.strip())
     draft.listing.condition = condition.strip()
     draft.listing.brand = brand.strip()
     draft.listing.model = model.strip()
@@ -181,15 +183,8 @@ def update_draft_from_review(
         product_identifier_value=product_identifier_value,
         key_technical_details=key_technical_details,
     )
+    draft.listing.shipping_suggestion["profile"] = normalize_shipping_profile(shipping_profile)
 
-    draft.source.user_input.update(
-        {
-            "product_name": draft.listing.title,
-            "condition": draft.listing.condition,
-            "accessories": "\n".join(explicit_included_items),
-            "hints": hints.strip(),
-        }
-    )
     draft.source.notes = description.strip()
     draft.listing.description_html = render_listing_description(draft)
     current_values = {
@@ -204,10 +199,16 @@ def update_draft_from_review(
         "product_identifier": _product_identifier_form_value(draft.listing.attributes),
         "key_technical_details": "\n".join(_string_list_attribute(draft.listing.attributes, "keyTechnicalDetails")),
     }
-    draft.listing.attributes["fieldSources"] = {
-        field: "Bearbeitet" if current_values[field].strip() != previous_values[field].strip() else previous_sources.get(field, "Entwurf")
-        for field in current_values
-    }
+    if action == "save":
+        draft.listing.attributes["fieldSources"] = {
+            field: previous_sources.get(field, "Entwurf")
+            for field in current_values
+        }
+    else:
+        draft.listing.attributes["fieldSources"] = {
+            field: "Bearbeitet" if current_values[field].strip() != previous_values[field].strip() else previous_sources.get(field, "Entwurf")
+            for field in current_values
+        }
 
     review_metadata = {
         "confirmedFields": sorted({field for field in (confirm_fields or []) if field in CORE_FIELDS}),
@@ -289,3 +290,9 @@ def _split_lines(value: str) -> list[str]:
     normalized = value.replace("\r", "\n")
     parts = [part.strip(" -•\t") for part in normalized.split("\n")]
     return [part for part in parts if part]
+
+
+def _normalize_title_casing(value: str) -> str:
+    from app.drafts.analysis import _normalize_title_casing as normalize_title_casing
+
+    return normalize_title_casing(value)

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Open Inserto Favicon</title>
+  <desc id="desc">A compact listing card with a publish arrow.</desc>
+  <rect width="512" height="512" rx="112" fill="#ffffff"/>
+  <rect x="76" y="92" width="286" height="328" rx="42" fill="#ffffff" stroke="#111827" stroke-width="34"/>
+  <rect x="128" y="148" width="86" height="86" rx="20" fill="#22c55e"/>
+  <path d="M252 158h70M252 206h54M128 282h132M128 336h104" stroke="#111827" stroke-width="28" stroke-linecap="round"/>
+  <path d="M128 384h82" stroke="#22c55e" stroke-width="30" stroke-linecap="round"/>
+  <path d="M285 310c40-44 79-63 140-63" fill="none" stroke="#16a34a" stroke-width="40" stroke-linecap="round"/>
+  <path d="M402 186l76 61-76 61" fill="none" stroke="#16a34a" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="432" cy="124" r="30" fill="#2563eb"/>
+  <circle cx="438" cy="381" r="30" fill="#2563eb"/>
+</svg>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -14,6 +15,7 @@ from app.drafts.included_items import normalize_included_items
 from app.drafts.models import Draft, ListingData
 from app.drafts.rendering import render_listing_description
 from app.drafts.vision import OpenAIVisionAnalyzerClient
+from app.marketplaces.ebay.taxonomy import get_category_resolution, get_required_category_aspects
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +130,7 @@ class VisionDraftAnalysisService:
         description_text = _clean_text(payload.get("description")) or draft.source.notes.strip()
         issues = _collect_issues(payload.get("issues"), draft.source.user_input.get("hints"))
 
-        title = _clean_text(payload.get("title")) or _clean_text(draft.source.user_input.get("product_name"))
+        title = _select_listing_title(payload.get("title"), draft.source.user_input.get("product_name"))
         payload_items = _normalize_string_list(payload.get("includedItems"))
         user_accessories = _split_lines_or_csv(draft.source.user_input.get("accessories"))
 
@@ -207,6 +209,73 @@ class VisionDraftAnalysisService:
         return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+def autofill_ebay_required_aspects(draft: Draft, settings: Settings) -> bool:
+    required_aspects = get_required_category_aspects(draft)
+    if not required_aspects:
+        return False
+
+    existing = _ebay_aspect_values(draft)
+    updated = dict(existing)
+    changed = False
+    for aspect in required_aspects:
+        name = _clean_text(aspect.get("name"))
+        if not name or updated.get(name):
+            continue
+        value = _infer_required_aspect_value(draft, aspect)
+        if value:
+            updated[name] = value
+            changed = True
+
+    missing = [aspect for aspect in required_aspects if not updated.get(_clean_text(aspect.get("name")))]
+    category_id = str(get_category_resolution(draft).get("selected_id") or draft.listing.category_suggestion or "").strip()
+    autofill_metadata = draft.listing.attributes.get("ebayAspectsAutofill")
+    autofill_metadata = autofill_metadata if isinstance(autofill_metadata, dict) else {}
+    ai_already_attempted = str(autofill_metadata.get("categoryId") or "") == category_id and autofill_metadata.get("aiAttempted") is True
+    if missing and settings.has_vision_config and draft.source.images and not ai_already_attempted:
+        draft.listing.attributes["ebayAspectsAutofill"] = {"categoryId": category_id, "aiAttempted": True}
+        try:
+            vision_service = VisionDraftAnalysisService(
+                client=OpenAIVisionAnalyzerClient(
+                    api_key=settings.vision_api_key,
+                    model=settings.vision_model,
+                    timeout_seconds=settings.vision_timeout_seconds,
+                ),
+                project_dir=settings.project_dir,
+                image_max_side=settings.vision_image_max_side,
+                image_quality=settings.vision_image_quality,
+                image_detail=settings.vision_image_detail,
+                max_images=settings.vision_max_images,
+            )
+            ai_aspects = vision_service.client.analyze_ebay_aspects(
+                notes=draft.source.notes,
+                user_input=draft.source.user_input,
+                listing=_listing_context(draft),
+                category=get_category_resolution(draft),
+                required_aspects=missing,
+                image_payloads=vision_service._build_image_payloads(draft),
+            )
+            for item in ai_aspects:
+                name = _clean_text(item.get("name"))
+                if not name or updated.get(name):
+                    continue
+                aspect = next((candidate for candidate in missing if _clean_text(candidate.get("name")) == name), None)
+                if not aspect:
+                    continue
+                value = _normalize_aspect_value(item.get("value"), aspect)
+                if value:
+                    updated[name] = value
+                    changed = True
+        except Exception as exc:
+            logger.warning("OpenAI eBay aspect autofill failed for draft %s: %s", draft.id, exc)
+
+    if changed:
+        draft.listing.attributes["ebayAspects"] = updated
+        sources = draft.listing.attributes.get("fieldSources")
+        if isinstance(sources, dict):
+            sources["ebay_aspects"] = "KI"
+    return changed
+
+
 class ConfiguredDraftAnalysisService:
     def __init__(self, primary: DraftAnalysisService, fallback: DraftAnalysisService | None = None) -> None:
         self.primary = primary
@@ -259,28 +328,31 @@ def build_draft_analysis_service(settings: Settings) -> DraftAnalysisService:
 
 
 def apply_analysis_result(draft: Draft, analysis: DraftAnalysisResult) -> Draft:
-    original_user_input = {
-        key: value
-        for key, value in draft.source.user_input.items()
-        if isinstance(key, str) and isinstance(value, str) and value.strip()
-    }
-    original_notes = draft.source.notes.strip()
+    existing_original_input = draft.listing.attributes.get("originalInput")
+    if isinstance(existing_original_input, dict):
+        original_notes = str(existing_original_input.get("notes") or "")
+        raw_user_input = existing_original_input.get("userInput")
+        original_user_input = {
+            str(key): str(value)
+            for key, value in (raw_user_input.items() if isinstance(raw_user_input, dict) else [])
+            if str(key).strip() and str(value).strip()
+        }
+    else:
+        original_user_input = {
+            key: value
+            for key, value in draft.source.user_input.items()
+            if isinstance(key, str) and isinstance(value, str) and value.strip()
+        }
+        original_notes = draft.source.notes.strip()
 
     draft.listing = analysis.listing
+    draft.listing.title = _select_listing_title(draft.listing.title, original_user_input.get("product_name"))
     draft.listing.included_items = normalize_included_items(draft.listing.title, draft.listing.included_items)
     draft.workflow.needs_review = analysis.needs_review
     draft.workflow.missing_information = list(analysis.missing_information or [])
     draft.workflow.last_updated_at = draft.workflow.last_updated_at
     field_sources = _build_field_sources(draft, analysis, original_user_input)
     draft.source.notes = analysis.description_text.strip()
-    draft.source.user_input.update(
-        {
-            "product_name": draft.listing.title.strip(),
-            "condition": draft.listing.condition.strip(),
-            "accessories": "\n".join(item.strip() for item in draft.listing.included_items if item.strip()),
-            "hints": "\n".join(item.strip() for item in draft.listing.issues if item.strip()),
-        }
-    )
 
     confidence_notes = list(analysis.confidence_notes or [])
     if confidence_notes:
@@ -328,16 +400,119 @@ def _normalize_string_list(value: object) -> list[str]:
     return _split_lines_or_csv(value)
 
 
+def _ebay_aspect_values(draft: Draft) -> dict[str, str]:
+    values = draft.listing.attributes.get("ebayAspects")
+    if not isinstance(values, dict):
+        return {}
+    return {str(key).strip(): str(value).strip() for key, value in values.items() if str(key).strip() and str(value).strip()}
+
+
+def _infer_required_aspect_value(draft: Draft, aspect: dict[str, Any]) -> str:
+    name = _clean_text(aspect.get("name"))
+    name_key = name.casefold()
+    if name_key in {"marke", "markenkompatibilität", "kompatible marke"}:
+        return _normalize_aspect_value(draft.listing.brand, aspect)
+    if name_key in {"modell", "modellkompatibilität", "kompatibles modell"}:
+        return _normalize_aspect_value(draft.listing.model, aspect)
+    if name_key in {"produktart", "typ", "art"}:
+        value = _match_allowed_value(_product_context_text(draft), aspect)
+        if value:
+            return value
+        category = get_category_resolution(draft)
+        return _normalize_aspect_value(category.get("selected_name"), aspect)
+    return _match_allowed_value(_product_context_text(draft), aspect)
+
+
+def _normalize_aspect_value(value: object, aspect: dict[str, Any]) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    allowed = _allowed_aspect_values(aspect)
+    if not allowed:
+        return text
+    for allowed_value in allowed:
+        if text.casefold() == allowed_value.casefold():
+            return allowed_value
+    for allowed_value in allowed:
+        if allowed_value.casefold() in text.casefold() or text.casefold() in allowed_value.casefold():
+            return allowed_value
+    return ""
+
+
+def _match_allowed_value(context: str, aspect: dict[str, Any]) -> str:
+    context_key = context.casefold()
+    for value in _allowed_aspect_values(aspect):
+        value_key = value.casefold()
+        if value_key and value_key in context_key:
+            return value
+    return ""
+
+
+def _allowed_aspect_values(aspect: dict[str, Any]) -> list[str]:
+    values = aspect.get("values")
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def _string_attribute(attributes: dict[str, Any], key: str) -> str:
+    value = attributes.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _string_list_attribute(attributes: dict[str, Any], key: str) -> list[str]:
+    value = attributes.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def _product_context_text(draft: Draft) -> str:
+    return " ".join(
+        part
+        for part in (
+            draft.listing.title,
+            draft.listing.brand,
+            draft.listing.model,
+            draft.source.notes,
+            " ".join(draft.listing.included_items),
+            " ".join(_string_list_attribute(draft.listing.attributes, "keyTechnicalDetails")),
+            get_category_resolution(draft).get("selected_name", ""),
+            get_category_resolution(draft).get("selected_path", ""),
+        )
+        if isinstance(part, str) and part.strip()
+    )
+
+
+def _listing_context(draft: Draft) -> dict[str, Any]:
+    return {
+        "title": draft.listing.title,
+        "brand": draft.listing.brand,
+        "model": draft.listing.model,
+        "condition": draft.listing.condition,
+        "includedItems": draft.listing.included_items,
+        "issues": draft.listing.issues,
+        "keyTechnicalDetails": _string_list_attribute(draft.listing.attributes, "keyTechnicalDetails"),
+        "productIdentifierType": _string_attribute(draft.listing.attributes, "product_identifier_type"),
+        "productIdentifierValue": _string_attribute(draft.listing.attributes, "product_identifier_value"),
+    }
+
+
 def _collect_issues(*values: object) -> list[str]:
     issues: list[str] = []
     seen: set[str] = set()
+    fingerprints: list[set[str]] = []
     for value in values:
         for item in _normalize_string_list(value):
             item = _normalize_listing_issue_text(item)
             key = item.casefold()
             if key in seen:
                 continue
+            fingerprint = _issue_fingerprint(item)
+            if any(_issue_similarity(fingerprint, existing) >= 0.68 for existing in fingerprints):
+                continue
             seen.add(key)
+            fingerprints.append(fingerprint)
             issues.append(item)
     return issues
 
@@ -361,7 +536,122 @@ def _normalize_listing_issue_text(value: str) -> str:
         subject = text[6:-10].strip()
         if subject:
             return f"{subject[0].upper() + subject[1:]} nicht enthalten."
+    if "gerät" in lowered:
+        text = text.replace("Das Gerät", "Der Artikel")
+        text = text.replace("das Gerät", "der Artikel")
+        text = text.replace("Gerät", "Artikel")
+        text = text.replace("gerät", "Artikel")
     return text
+
+
+def _select_listing_title(ai_title: object, user_title: object) -> str:
+    ai_text = _clean_text(ai_title)
+    user_text = _clean_text(user_title)
+    if not ai_text:
+        return _normalize_title_casing(user_text)
+    if _is_all_caps_title(user_text) and _same_title_tokens(ai_text, user_text):
+        return _normalize_title_casing(ai_text)
+    return _normalize_title_casing(ai_text)
+
+
+def _normalize_title_casing(value: str) -> str:
+    text = value.strip()
+    if not _is_all_caps_title(text):
+        return text
+    brand_casing = {
+        "SATECHI": "Satechi",
+        "APPLE": "Apple",
+        "SAMSUNG": "Samsung",
+        "NINTENDO": "Nintendo",
+        "BOSE": "Bose",
+        "IKEA": "IKEA",
+        "HP": "HP",
+        "LG": "LG",
+        "USB": "USB",
+        "HDMI": "HDMI",
+        "RJ45": "RJ45",
+        "SD": "SD",
+    }
+    lowered_words = {"AND", "UND", "MIT", "OHNE", "FÜR", "FUER", "VON"}
+    words = re.split(r"(\s+|-)", text)
+    normalized: list[str] = []
+    for word in words:
+        if not word or word.isspace() or word == "-":
+            normalized.append(word)
+            continue
+        stripped = word.strip(",;:()[]")
+        prefix = word[: len(word) - len(word.lstrip(",;:()[]"))]
+        suffix = word[len(word.rstrip(",;:()[]")) :]
+        core = stripped
+        if core in brand_casing:
+            replacement = brand_casing[core]
+        elif core in lowered_words:
+            replacement = core.casefold()
+        elif any(char.isdigit() for char in core):
+            replacement = core
+        elif len(core) <= 3:
+            replacement = core
+        else:
+            replacement = core[:1].upper() + core[1:].casefold()
+        normalized.append(f"{prefix}{replacement}{suffix}")
+    return "".join(normalized)
+
+
+def _is_all_caps_title(value: str) -> bool:
+    letters = [char for char in value if char.isalpha()]
+    return bool(letters) and sum(1 for char in letters if char.isupper()) / len(letters) > 0.78
+
+
+def _same_title_tokens(left: str, right: str) -> bool:
+    left_tokens = _title_tokens(left)
+    right_tokens = _title_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = left_tokens & right_tokens
+    return len(overlap) / max(len(left_tokens), len(right_tokens)) >= 0.75
+
+
+def _title_tokens(value: str) -> set[str]:
+    return {token for token in re.split(r"[^a-z0-9]+", value.casefold()) if len(token) > 1}
+
+
+def _issue_fingerprint(value: str) -> set[str]:
+    normalized = value.casefold()
+    normalized = normalized.replace("ethernetkabel", "ethernet kabel")
+    normalized = normalized.replace("anschluss", "anschluss ")
+    tokens = {
+        token
+        for token in re.split(r"[^a-z0-9äöüß]+", normalized)
+        if len(token) > 2
+        and token
+        not in {
+            "das",
+            "der",
+            "die",
+            "von",
+            "mir",
+            "verwendete",
+            "verwendeten",
+            "hat",
+            "hält",
+            "haelt",
+            "nicht",
+            "sehr",
+            "gut",
+            "dem",
+            "den",
+            "ein",
+            "eine",
+            "einem",
+        }
+    }
+    return tokens
+
+
+def _issue_similarity(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    return len(left & right) / len(left | right)
 
 
 def _build_field_sources(

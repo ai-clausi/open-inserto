@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import logging
+import time
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,8 @@ from app.marketplaces.ebay.auth import EbayAuthStore, EbayTokenData, SCOPES, nor
 from app.marketplaces.ebay.configuration import EbayAccountResources
 
 logger = logging.getLogger(__name__)
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+UPLOAD_RETRY_DELAYS_SECONDS = (1.0, 3.0)
 
 
 class EbayError(Exception):
@@ -30,6 +33,15 @@ class EbayAuthError(EbayError):
 
 class EbayApiError(EbayError):
     pass
+
+
+@dataclass(slots=True)
+class EbayOfferAlreadyExistsError(EbayValidationError):
+    offer_id: str
+
+    def __init__(self, offer_id: str, message: str):
+        super().__init__(message)
+        self.offer_id = offer_id
 
 
 @dataclass(slots=True)
@@ -140,16 +152,31 @@ class EbayClient:
 
     def upload_image(self, access_token: EbayAccessToken, image_path: Path) -> dict[str, Any]:
         logger.debug("Uploading image to eBay media API: path=%s", image_path.name)
-        with image_path.open("rb") as handle:
-            response = self._client.post(
-                f"{self.settings.ebay_api_base_url}/commerce/media/v1_beta/image/create_image_from_file",
-                headers={
-                    "Authorization": f"{access_token.token_type} {access_token.token}",
-                    "Content-Language": self.settings.ebay_content_language,
-                },
-                files={"image": (image_path.name, handle, _guess_mime_type(image_path))},
+        upload_url = f"{self.settings.ebay_media_base_url}/commerce/media/v1_beta/image/create_image_from_file"
+        response: httpx.Response | None = None
+        for attempt, retry_delay in enumerate((*UPLOAD_RETRY_DELAYS_SECONDS, None), start=1):
+            with image_path.open("rb") as handle:
+                response = self._client.post(
+                    upload_url,
+                    headers={
+                        "Authorization": f"{access_token.token_type} {access_token.token}",
+                        "Content-Language": self.settings.ebay_content_language,
+                    },
+                    files={"image": (image_path.name, handle, _guess_mime_type(image_path))},
+                )
+            self._log_response("upload_image", response)
+            if response.status_code not in RETRYABLE_STATUS_CODES or retry_delay is None:
+                break
+            logger.warning(
+                "Retrying eBay image upload after transient response: path=%s status=%s attempt=%s delay_seconds=%s",
+                image_path.name,
+                response.status_code,
+                attempt,
+                retry_delay,
             )
-        self._log_response("upload_image", response)
+            time.sleep(retry_delay)
+        if response is None:
+            raise EbayApiError("Bild-Upload zu eBay konnte nicht gestartet werden")
         self._raise_for_status(response)
         return response.json()
 
@@ -182,8 +209,40 @@ class EbayClient:
             json=payload,
         )
         self._log_response("create_offer", response)
+        if response.status_code == 400:
+            existing_offer_id = _extract_existing_offer_id(response)
+            if existing_offer_id:
+                raise EbayOfferAlreadyExistsError(existing_offer_id, _extract_error_message(response))
         self._raise_for_status(response)
         return response.json()
+
+    def update_offer(self, access_token: EbayAccessToken, *, offer_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        logger.debug(
+            "Updating eBay offer: offer_id=%s sku=%s category_id=%s policy_ids=%s merchant_location=%s",
+            offer_id,
+            payload.get("sku"),
+            payload.get("categoryId"),
+            payload.get("listingPolicies"),
+            payload.get("merchantLocationKey"),
+        )
+        response = self._client.put(
+            f"{self.settings.ebay_api_base_url}/sell/inventory/v1/offer/{offer_id}",
+            headers=self._api_headers(access_token),
+            json=payload,
+        )
+        self._log_response("update_offer", response)
+        self._raise_for_status(response)
+        return response.json() if response.content else {"offerId": offer_id, "status": "updated"}
+
+    def publish_offer(self, access_token: EbayAccessToken, offer_id: str) -> dict[str, Any]:
+        logger.debug("Publishing eBay offer: offer_id=%s", offer_id)
+        response = self._client.post(
+            f"{self.settings.ebay_api_base_url}/sell/inventory/v1/offer/{offer_id}/publish",
+            headers=self._api_headers(access_token),
+        )
+        self._log_response("publish_offer", response)
+        self._raise_for_status(response)
+        return response.json() if response.content else {}
 
     def get_account_resources(self, access_token: EbayAccessToken) -> EbayAccountResources:
         payment_payload = self._get_labeled(
@@ -281,6 +340,23 @@ class EbayClient:
         services = payload.get("shippingServices", [])
         return [item for item in services if isinstance(item, dict)]
 
+    def get_item_condition_policies(self, access_token: EbayAccessToken, *, category_id: str) -> dict[str, Any]:
+        payload = self._get_labeled(
+            access_token,
+            label="Kategorie-Zustandsregeln",
+            url=f"{self.settings.ebay_api_base_url}/sell/metadata/v1/marketplace/{self.settings.ebay_marketplace_id}/get_item_condition_policies",
+            params={"filter": f"categoryIds:{{{category_id}}}"},
+        )
+        policies = payload.get("itemConditionPolicies")
+        if not isinstance(policies, list):
+            return {}
+        for policy in policies:
+            if not isinstance(policy, dict):
+                continue
+            if str(policy.get("categoryId") or "") == str(category_id):
+                return policy
+        return {}
+
     def get_default_category_tree_id(self, access_token: EbayAccessToken) -> str:
         payload = self._get_labeled(
             access_token,
@@ -326,6 +402,47 @@ class EbayClient:
                 }
             )
         return suggestions
+
+    def get_item_aspects_for_category(
+        self,
+        access_token: EbayAccessToken,
+        *,
+        category_tree_id: str,
+        category_id: str,
+    ) -> list[dict[str, Any]]:
+        payload = self._get_labeled(
+            access_token,
+            label="Kategorie-Pflichtmerkmale",
+            url=f"{self.settings.ebay_api_base_url}/commerce/taxonomy/v1/category_tree/{category_tree_id}/get_item_aspects_for_category",
+            params={"category_id": category_id},
+        )
+        aspects: list[dict[str, Any]] = []
+        for item in payload.get("aspects", []):
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("localizedAspectName") or "").strip()
+            if not name:
+                continue
+            constraint = item.get("aspectConstraint")
+            constraint = constraint if isinstance(constraint, dict) else {}
+            values: list[str] = []
+            raw_values = item.get("aspectValues")
+            if isinstance(raw_values, list):
+                for raw_value in raw_values:
+                    if isinstance(raw_value, dict) and str(raw_value.get("localizedValue") or "").strip():
+                        values.append(str(raw_value.get("localizedValue")).strip())
+            aspects.append(
+                {
+                    "name": name,
+                    "required": bool(constraint.get("aspectRequired")),
+                    "mode": str(constraint.get("aspectMode") or "").strip(),
+                    "dataType": str(constraint.get("aspectDataType") or "").strip(),
+                    "cardinality": str(constraint.get("itemToAspectCardinality") or "").strip(),
+                    "usage": str(constraint.get("aspectUsage") or "").strip(),
+                    "values": values,
+                }
+            )
+        return aspects
 
     def create_payment_policy(self, access_token: EbayAccessToken, payload: dict[str, Any]) -> dict[str, Any]:
         return self._post_json_labeled(
@@ -437,6 +554,8 @@ def _extract_error_message(response: httpx.Response) -> str:
     try:
         payload = response.json()
     except Exception:
+        if response.status_code in RETRYABLE_STATUS_CODES:
+            return f"eBay API temporär nicht verfügbar ({response.status_code})"
         return f"eBay API error ({response.status_code})"
 
     errors = payload.get("errors")
@@ -467,6 +586,30 @@ def _extract_error_message(response: httpx.Response) -> str:
     if description:
         return description
     return f"eBay API error ({response.status_code})"
+
+
+def _extract_existing_offer_id(response: httpx.Response) -> str | None:
+    try:
+        payload = response.json()
+    except Exception:
+        return None
+    errors = payload.get("errors")
+    if not isinstance(errors, list):
+        return None
+    for error in errors:
+        if not isinstance(error, dict):
+            continue
+        if str(error.get("errorId") or "") != "25002":
+            continue
+        parameters = error.get("parameters")
+        if not isinstance(parameters, list):
+            continue
+        for parameter in parameters:
+            if isinstance(parameter, dict) and parameter.get("name") == "offerId":
+                offer_id = str(parameter.get("value") or "").strip()
+                if offer_id:
+                    return offer_id
+    return None
 
 
 def _guess_mime_type(path: Path) -> str:

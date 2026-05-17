@@ -302,6 +302,40 @@ def test_discover_route_loads_account_resources_and_renders_selection_form(tmp_p
     get_settings.cache_clear()
 
 
+def test_index_shows_create_location_action_when_only_merchant_location_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'data' / 'test.db'}")
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as client:
+        from app.marketplaces.ebay.auth import EbayAuthStore, EbayTokenData
+        from app.marketplaces.ebay.configuration import EbayAccountResources, EbayConfigStore
+
+        settings = get_settings()
+        auth_store = EbayAuthStore(settings.database_path)
+        auth_store.save_tokens(EbayTokenData(refresh_token="refresh-123"))
+        config_store = EbayConfigStore(settings.database_path)
+        config_store.save_discovered_resources(
+            EbayAccountResources(
+                payment_policies=[{"id": "pay-1", "name": "Payment"}],
+                fulfillment_policies=[{"id": "ful-1", "name": "Fulfillment"}],
+                return_policies=[{"id": "ret-1", "name": "Return"}],
+                merchant_locations=[],
+            )
+        )
+
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Merchant Location fehlt" in response.text
+    assert "Standard-Merchant-Location anlegen" in response.text
+    get_settings.cache_clear()
+
+
 def test_discover_route_shows_opt_in_notice_when_selling_policy_management_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("PROJECT_DIR", str(tmp_path))
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
@@ -410,7 +444,7 @@ def test_create_default_policies_route_creates_standard_business_policies(tmp_pa
     monkeypatch.setenv("EBAY_RU_NAME", "runame-123")
     get_settings.cache_clear()
 
-    created_payloads: dict[str, dict] = {}
+    created_payloads: dict[str, object] = {"fulfillment": []}
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -441,12 +475,20 @@ def test_create_default_policies_route_creates_standard_business_policies(tmp_pa
             created_payloads["return"] = json.loads(request.content.decode())
             return httpx.Response(201, json={"returnPolicyId": "ret-1"})
         if path.endswith("/sell/account/v1/fulfillment_policy") and request.method == "POST":
-            created_payloads["fulfillment"] = json.loads(request.content.decode())
+            created_payloads["fulfillment"].append(json.loads(request.content.decode()))
             return httpx.Response(201, json={"fulfillmentPolicyId": "ful-1"})
         if path.endswith("/sell/account/v1/payment_policy") and request.method == "GET":
-            return httpx.Response(200, json={"paymentPolicies": [{"paymentPolicyId": "pay-1", "name": "Open Inserto - Sofortzahlung"}]})
+            return httpx.Response(200, json={"paymentPolicies": [{"paymentPolicyId": "pay-1", "name": "Open Inserto - Auktion"}]})
         if path.endswith("/sell/account/v1/fulfillment_policy") and request.method == "GET":
-            return httpx.Response(200, json={"fulfillmentPolicies": [{"fulfillmentPolicyId": "ful-1", "name": "Open Inserto - DHL Standard"}]})
+            return httpx.Response(
+                200,
+                json={
+                    "fulfillmentPolicies": [
+                        {"fulfillmentPolicyId": "ful-2", "name": "Open Inserto - DHL 2kg Paket + Päckchen M"},
+                        {"fulfillmentPolicyId": "ful-pickup", "name": "Open Inserto - Selbstabholung"},
+                    ]
+                },
+            )
         if path.endswith("/sell/account/v1/return_policy") and request.method == "GET":
             return httpx.Response(200, json={"returnPolicies": [{"returnPolicyId": "ret-1", "name": "Open Inserto - Keine Rücknahme"}]})
         if path.endswith("/sell/inventory/v1/location") and request.method == "GET":
@@ -470,11 +512,19 @@ def test_create_default_policies_route_creates_standard_business_policies(tmp_pa
 
     assert response.status_code == 200
     assert "Standard-Business-Policies wurden angelegt oder waren bereits vorhanden." in response.text
-    assert created_payloads["payment"]["immediatePay"] is True
+    assert created_payloads["payment"]["immediatePay"] is False
     assert created_payloads["return"]["returnsAccepted"] is False
-    services = created_payloads["fulfillment"]["shippingOptions"][0]["shippingServices"]
+    fulfillment_payloads = created_payloads["fulfillment"]
+    assert len(fulfillment_payloads) == 5
+    standard_payload = next(item for item in fulfillment_payloads if item["name"] == "Open Inserto - DHL 2kg Paket + Päckchen M")
+    services = standard_payload["shippingOptions"][0]["shippingServices"]
     assert {item["shippingServiceCode"] for item in services} == {"DE_DHLPaket", "DE_DHLPackchen"}
-    assert created_payloads["fulfillment"]["handlingTime"]["value"] == 3
+    assert services[0]["shippingServiceCode"] == "DE_DHLPaket"
+    assert services[0]["shippingCost"]["value"] == "6.19"
+    assert services[1]["shippingCost"]["value"] == "5.19"
+    assert standard_payload["handlingTime"]["value"] == 3
+    pickup_payload = next(item for item in fulfillment_payloads if item["name"] == "Open Inserto - Selbstabholung")
+    assert pickup_payload["localPickup"] is True
     get_settings.cache_clear()
 
 
@@ -516,9 +566,9 @@ def test_create_default_policies_route_reuses_existing_policies_after_duplicate_
         if path.endswith("/sell/account/v1/fulfillment_policy") and request.method == "POST":
             return httpx.Response(201, json={"fulfillmentPolicyId": "ful-1"})
         if path.endswith("/sell/account/v1/payment_policy") and request.method == "GET":
-            return httpx.Response(200, json={"paymentPolicies": [{"paymentPolicyId": "pay-9", "name": "Open Inserto - Sofortzahlung"}]})
+            return httpx.Response(200, json={"paymentPolicies": [{"paymentPolicyId": "pay-9", "name": "Open Inserto - Auktion"}]})
         if path.endswith("/sell/account/v1/fulfillment_policy") and request.method == "GET":
-            return httpx.Response(200, json={"fulfillmentPolicies": [{"fulfillmentPolicyId": "ful-1", "name": "Open Inserto - DHL Standard"}]})
+            return httpx.Response(200, json={"fulfillmentPolicies": [{"fulfillmentPolicyId": "ful-1", "name": "Open Inserto - DHL 2kg Paket + Päckchen M"}]})
         if path.endswith("/sell/account/v1/return_policy") and request.method == "GET":
             return httpx.Response(200, json={"returnPolicies": [{"returnPolicyId": "ret-1", "name": "Open Inserto - Keine Rücknahme"}]})
         if path.endswith("/sell/inventory/v1/location") and request.method == "GET":

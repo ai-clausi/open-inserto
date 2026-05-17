@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings, get_settings
 from app.db.init_db import initialize_database
 from app.main import create_app
-from app.marketplaces.ebay.auth import EbayAuthStore
+from app.marketplaces.ebay.auth import EbayAuthStore, EbayTokenData
 from app.marketplaces.ebay.client import EbayClient
 
 
@@ -134,3 +134,39 @@ def test_refresh_token_from_store_is_used_for_access_token(tmp_path: Path):
     assert token.token == "fresh-access"
     stored = auth_store.get_tokens()
     assert stored.refresh_token == "fresh-refresh"
+
+
+def test_ebay_auth_store_separates_tokens_by_mode(tmp_path: Path):
+    settings = Settings(
+        project_dir=tmp_path,
+        data_dir=tmp_path / "data",
+        database_url=f"sqlite:///{tmp_path / 'test.db'}",
+    )
+    initialize_database(settings.database_path)
+
+    sandbox_store = EbayAuthStore(settings.database_path, mode="sandbox")
+    live_store = EbayAuthStore(settings.database_path, mode="live")
+
+    sandbox_store.save_tokens(EbayTokenData(refresh_token="sandbox-refresh"))
+    live_store.save_tokens(EbayTokenData(refresh_token="live-refresh"))
+
+    assert sandbox_store.get_tokens().refresh_token == "sandbox-refresh"
+    assert live_store.get_tokens().refresh_token == "live-refresh"
+
+
+def test_ebay_oauth_state_is_separated_by_mode(tmp_path: Path):
+    settings = Settings(
+        project_dir=tmp_path,
+        data_dir=tmp_path / "data",
+        database_url=f"sqlite:///{tmp_path / 'test.db'}",
+    )
+    initialize_database(settings.database_path)
+
+    sandbox_store = EbayAuthStore(settings.database_path, mode="sandbox")
+    live_store = EbayAuthStore(settings.database_path, mode="live")
+
+    sandbox_state = sandbox_store.issue_state()
+    live_state = live_store.issue_state()
+
+    assert sandbox_store.get_pending_state() == sandbox_state
+    assert live_store.get_pending_state() == live_state

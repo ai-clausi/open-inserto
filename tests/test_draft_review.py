@@ -98,6 +98,57 @@ def test_review_preserves_field_source_when_value_is_unchanged():
     assert draft.listing.attributes["fieldSources"]["brand"] == "Bearbeitet"
 
 
+def test_review_save_does_not_overwrite_original_user_input():
+    draft = build_draft()
+    draft.listing.attributes["originalInput"] = {
+        "notes": "Originale Notiz",
+        "userInput": {"product_name": "Originalprodukt", "hints": "Originalhinweis"},
+    }
+    draft.source.user_input = {"product_name": "Originalprodukt", "hints": "Originalhinweis"}
+
+    update_draft_from_review(
+        draft,
+        title="KI Titel",
+        condition="gut",
+        description="KI Beschreibung",
+        included_items="KI Lieferumfang",
+        brand="KI Marke",
+        model="KI Modell",
+        subtitle="",
+        category_suggestion="1234",
+        hints="KI Hinweis",
+        confirm_fields=[],
+        action="save",
+    )
+
+    assert draft.listing.attributes["originalInput"]["userInput"]["product_name"] == "Originalprodukt"
+    assert draft.source.user_input["product_name"] == "Originalprodukt"
+
+
+def test_review_save_preserves_field_sources_without_marking_everything_as_edited():
+    draft = build_draft()
+    draft.listing.title = "KI Titel"
+    draft.listing.attributes["fieldSources"] = {"title": "KI", "brand": "KI"}
+
+    update_draft_from_review(
+        draft,
+        title="Geänderter Titel",
+        condition="gut",
+        description="Beschreibung",
+        included_items="Lieferumfang",
+        brand="Neue Marke",
+        model="",
+        subtitle="",
+        category_suggestion="1234",
+        hints="",
+        confirm_fields=[],
+        action="save",
+    )
+
+    assert draft.listing.attributes["fieldSources"]["title"] == "KI"
+    assert draft.listing.attributes["fieldSources"]["brand"] == "KI"
+
+
 def test_review_exposes_and_updates_product_data_used_by_live_preview():
     draft = build_draft()
     draft.listing.attributes["product_identifier_type"] = "Modell-Nummer"
@@ -134,8 +185,8 @@ def test_review_exposes_and_updates_product_data_used_by_live_preview():
         "Bluetooth: 5.4",
         "Anschlüsse: 2x HDMI, 1x DisplayPort",
     ]
-    assert draft.listing.attributes["fieldSources"]["product_identifier"] == "Bearbeitet"
-    assert draft.listing.attributes["fieldSources"]["key_technical_details"] == "Bearbeitet"
+    assert draft.listing.attributes["fieldSources"]["product_identifier"] == "Entwurf"
+    assert draft.listing.attributes["fieldSources"]["key_technical_details"] == "Entwurf"
 
 
 def test_field_sources_backfill_product_data_from_legacy_vision_draft():

@@ -8,11 +8,45 @@ from typing import Any
 from app.db.base import get_connection
 
 
+PAYMENT_POLICY_NAME = "Open Inserto - Auktion"
+RETURN_POLICY_NAME = "Open Inserto - Keine Rücknahme"
+
+SHIPPING_PROFILES = {
+    "dhl_2kg": {
+        "label": "DHL 2kg Paket + Päckchen M",
+        "policy_name": "Open Inserto - DHL 2kg Paket + Päckchen M",
+        "description": "Primär DHL Paket 2kg für 6,19 EUR, zusätzlich DHL Päckchen M 2kg für 5,19 EUR.",
+    },
+    "dhl_5kg": {
+        "label": "DHL 5kg Paket",
+        "policy_name": "Open Inserto - DHL 5kg Paket",
+        "description": "DHL Paket 5kg für 7,69 EUR.",
+    },
+    "dhl_10kg": {
+        "label": "DHL 10kg Paket",
+        "policy_name": "Open Inserto - DHL 10kg Paket",
+        "description": "DHL Paket 10kg für 10,49 EUR.",
+    },
+    "dhl_20kg": {
+        "label": "DHL 20kg Paket",
+        "policy_name": "Open Inserto - DHL 20kg Paket",
+        "description": "DHL Paket 20kg für 18,99 EUR.",
+    },
+    "pickup": {
+        "label": "Nur Selbstabholung",
+        "policy_name": "Open Inserto - Selbstabholung",
+        "description": "Für sperrige Artikel ohne Versand.",
+    },
+}
+DEFAULT_SHIPPING_PROFILE = "dhl_2kg"
+
+
 SELECTION_KEYS = {
     "payment_policy_id": "ebay_selected_payment_policy_id",
     "fulfillment_policy_id": "ebay_selected_fulfillment_policy_id",
     "return_policy_id": "ebay_selected_return_policy_id",
     "merchant_location_key": "ebay_selected_merchant_location_key",
+    "shipping_profile_policy_ids": "ebay_selected_shipping_profile_policy_ids",
 }
 
 DISCOVERY_KEYS = {
@@ -29,6 +63,18 @@ class EffectiveEbayConfiguration:
     fulfillment_policy_id: str | None = None
     return_policy_id: str | None = None
     merchant_location_key: str | None = None
+    shipping_profile_policy_ids: dict[str, str] = None
+
+    def __post_init__(self) -> None:
+        self.shipping_profile_policy_ids = dict(self.shipping_profile_policy_ids or {})
+
+    def fulfillment_policy_id_for_profile(self, profile_key: str | None) -> str | None:
+        key = normalize_shipping_profile(profile_key)
+        if key in self.shipping_profile_policy_ids:
+            return self.shipping_profile_policy_ids[key]
+        if key == DEFAULT_SHIPPING_PROFILE:
+            return self.fulfillment_policy_id
+        return None
 
 
 @dataclass(slots=True)
@@ -46,19 +92,28 @@ class EbayAccountResources:
 
 
 class EbayConfigStore:
-    def __init__(self, database_path):
+    def __init__(self, database_path, *, mode: str = "sandbox"):
         self.database_path = database_path
+        self.mode = mode
+
+    def _key(self, meta_key: str) -> str:
+        return f"ebay_{self.mode}_{meta_key.removeprefix('ebay_')}"
 
     def get_effective_configuration(self) -> EffectiveEbayConfiguration:
         return self.get_selected_configuration()
 
     def get_selected_configuration(self) -> EffectiveEbayConfiguration:
-        values = self._get_values(tuple(SELECTION_KEYS.values()))
+        keys = {field: self._key(meta_key) for field, meta_key in SELECTION_KEYS.items()}
+        values = self._get_values(tuple(keys.values()))
+        if not values and self.mode == "sandbox":
+            values = self._get_values(tuple(SELECTION_KEYS.values()))
+            keys = SELECTION_KEYS
         return EffectiveEbayConfiguration(
-            payment_policy_id=_clean(values.get(SELECTION_KEYS["payment_policy_id"])),
-            fulfillment_policy_id=_clean(values.get(SELECTION_KEYS["fulfillment_policy_id"])),
-            return_policy_id=_clean(values.get(SELECTION_KEYS["return_policy_id"])),
-            merchant_location_key=_clean(values.get(SELECTION_KEYS["merchant_location_key"])),
+            payment_policy_id=_clean(values.get(keys["payment_policy_id"])),
+            fulfillment_policy_id=_clean(values.get(keys["fulfillment_policy_id"])),
+            return_policy_id=_clean(values.get(keys["return_policy_id"])),
+            merchant_location_key=_clean(values.get(keys["merchant_location_key"])),
+            shipping_profile_policy_ids=_load_string_dict(values.get(keys["shipping_profile_policy_ids"])),
         )
 
     def save_selected_configuration(self, **values: str | None) -> None:
@@ -66,7 +121,11 @@ class EbayConfigStore:
         for field, meta_key in SELECTION_KEYS.items():
             if field not in values:
                 continue
-            items.append((meta_key, values[field] or ""))
+            value = values[field]
+            if field == "shipping_profile_policy_ids" and isinstance(value, dict):
+                items.append((self._key(meta_key), json.dumps(value, ensure_ascii=False)))
+            else:
+                items.append((self._key(meta_key), value or ""))
         if not items:
             return
         with get_connection(self.database_path) as connection:
@@ -84,10 +143,10 @@ class EbayConfigStore:
 
     def save_discovered_resources(self, resources: EbayAccountResources) -> None:
         items = [
-            (DISCOVERY_KEYS["payment_policies"], json.dumps(resources.payment_policies, ensure_ascii=False)),
-            (DISCOVERY_KEYS["fulfillment_policies"], json.dumps(resources.fulfillment_policies, ensure_ascii=False)),
-            (DISCOVERY_KEYS["return_policies"], json.dumps(resources.return_policies, ensure_ascii=False)),
-            (DISCOVERY_KEYS["merchant_locations"], json.dumps(resources.merchant_locations, ensure_ascii=False)),
+            (self._key(DISCOVERY_KEYS["payment_policies"]), json.dumps(resources.payment_policies, ensure_ascii=False)),
+            (self._key(DISCOVERY_KEYS["fulfillment_policies"]), json.dumps(resources.fulfillment_policies, ensure_ascii=False)),
+            (self._key(DISCOVERY_KEYS["return_policies"]), json.dumps(resources.return_policies, ensure_ascii=False)),
+            (self._key(DISCOVERY_KEYS["merchant_locations"]), json.dumps(resources.merchant_locations, ensure_ascii=False)),
         ]
         with get_connection(self.database_path) as connection:
             connection.executemany(
@@ -103,12 +162,16 @@ class EbayConfigStore:
             connection.commit()
 
     def get_discovered_resources(self) -> EbayAccountResources:
-        values = self._get_values(tuple(DISCOVERY_KEYS.values()))
+        keys = {field: self._key(meta_key) for field, meta_key in DISCOVERY_KEYS.items()}
+        values = self._get_values(tuple(keys.values()))
+        if not values and self.mode == "sandbox":
+            values = self._get_values(tuple(DISCOVERY_KEYS.values()))
+            keys = DISCOVERY_KEYS
         return EbayAccountResources(
-            payment_policies=_load_json_list(values.get(DISCOVERY_KEYS["payment_policies"])),
-            fulfillment_policies=_load_json_list(values.get(DISCOVERY_KEYS["fulfillment_policies"])),
-            return_policies=_load_json_list(values.get(DISCOVERY_KEYS["return_policies"])),
-            merchant_locations=_load_json_list(values.get(DISCOVERY_KEYS["merchant_locations"])),
+            payment_policies=_load_json_list(values.get(keys["payment_policies"])),
+            fulfillment_policies=_load_json_list(values.get(keys["fulfillment_policies"])),
+            return_policies=_load_json_list(values.get(keys["return_policies"])),
+            merchant_locations=_load_json_list(values.get(keys["merchant_locations"])),
         )
 
     def auto_select_defaults(self, resources: EbayAccountResources) -> EffectiveEbayConfiguration:
@@ -127,6 +190,15 @@ class EbayConfigStore:
         if updates:
             self.save_selected_configuration(**updates)
         return self.get_effective_configuration()
+
+    def save_shipping_profile_policy_ids(self, policy_ids: dict[str, str]) -> None:
+        cleaned = {
+            normalize_shipping_profile(key): value.strip()
+            for key, value in policy_ids.items()
+            if normalize_shipping_profile(key) in SHIPPING_PROFILES and isinstance(value, str) and value.strip()
+        }
+        if cleaned:
+            self.save_selected_configuration(shipping_profile_policy_ids=cleaned)
 
     def _get_values(self, keys: tuple[str, ...]) -> dict[str, str]:
         if not keys:
@@ -220,8 +292,27 @@ def _load_json_list(raw: str | None) -> list[dict[str, str]]:
     return [item for item in payload if isinstance(item, dict)]
 
 
+def _load_string_dict(raw: str | None) -> dict[str, str]:
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {str(key): str(value) for key, value in payload.items() if str(value).strip()}
+
+
 def _clean(value: str | None) -> str | None:
     if value is None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def normalize_shipping_profile(value: str | None) -> str:
+    key = (value or "").strip()
+    if key in SHIPPING_PROFILES:
+        return key
+    return DEFAULT_SHIPPING_PROFILE

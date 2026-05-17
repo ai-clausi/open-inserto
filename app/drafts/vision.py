@@ -84,7 +84,9 @@ class OpenAIVisionAnalyzerClient:
             "Fülle issues nur mit inseratstauglichen Hinweisen zu Mängeln, fehlendem Lieferumfang oder offenen Prüfpunkten. "
             "Verwende dort niemals Bildanalyse-Formulierungen wie 'erkennbar', 'sichtbar', 'auf den Bildern', "
             "'scheint', 'wirkt' oder 'konnte nicht erkannt werden'. Formuliere stattdessen verkäufernah, z. B. "
-            "'Fernbedienung ist nicht enthalten' oder 'Das Gerät zeigt Gebrauchsspuren'. "
+            "'Fernbedienung ist nicht enthalten' oder 'Der Artikel zeigt Gebrauchsspuren'. "
+            "Verwende produktneutrale oder produktspezifische Begriffe; schreibe bei Möbeln niemals 'Gerät'. "
+            "Vermeide Lieferumfang-Duplikate wie den vollständigen Artikelnamen plus eine generische Variante desselben Artikels. "
             "Wenn etwas unklar ist, nenne es explizit in missingInformation und confidenceNotes. "
             f"notes={notes!r}; user_input={user_input!r}"
         )
@@ -139,6 +141,106 @@ class OpenAIVisionAnalyzerClient:
         )
 
         raise ValueError("Vision-Provider hat keine strukturierte Antwort geliefert")
+
+    def analyze_ebay_aspects(
+        self,
+        *,
+        notes: str,
+        user_input: dict[str, Any],
+        listing: dict[str, Any],
+        category: dict[str, Any],
+        required_aspects: list[dict[str, Any]],
+        image_payloads: list[dict[str, str]],
+    ) -> list[dict[str, str]]:
+        if not self.api_key:
+            raise ValueError("Vision API key fehlt")
+        if not required_aspects:
+            return []
+
+        response_format = {
+            "type": "json_schema",
+            "name": "ebay_category_aspects",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "aspects": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "value": {"type": "string"},
+                                "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+                            },
+                            "required": ["name", "value", "confidence"],
+                            "additionalProperties": False,
+                        },
+                    }
+                },
+                "required": ["aspects"],
+                "additionalProperties": False,
+            },
+        }
+        prompt = (
+            "Fülle nur die angefragten eBay-Kategoriepflichtmerkmale für den Verkaufsentwurf. "
+            "Nutze vorhandene Entwurfsdaten, Nutzerangaben und sichtbare Bildinhalte. "
+            "Erfinde keine Werte. Wenn ein Wert nicht sicher aus Titel, Marke, Modell, Nutzerangaben oder Bildern ableitbar ist, "
+            "gib für dieses Merkmal einen leeren value zurück. "
+            "Wenn allowedValues angegeben sind, muss value exakt einem allowedValue entsprechen oder leer bleiben. "
+            "Für Markenkompatibilität darf die erkannte Produktmarke verwendet werden, wenn der Artikel offensichtlich zu dieser Marke gehört. "
+            "Für Modellkompatibilität darf das erkannte Modell verwendet werden, wenn es um Zubehör, Ersatzteile oder Kompatibilität geht. "
+            "Für Produktart verwende eine kurze sachliche Produktart, möglichst aus allowedValues oder der eBay-Kategorie. "
+            f"notes={notes!r}; user_input={user_input!r}; listing={listing!r}; category={category!r}; "
+            f"required_aspects={required_aspects!r}"
+        )
+        content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
+        for image_payload in image_payloads:
+            content.append(
+                {
+                    "type": "input_image",
+                    "image_url": image_payload["image_url"],
+                    "detail": image_payload.get("detail", "low"),
+                }
+            )
+        payload = {
+            "model": self.model,
+            "input": [{"role": "user", "content": content}],
+            "text": {"format": response_format},
+        }
+        with httpx.Client(timeout=self.timeout_seconds) as client:
+            response = client.post(
+                "https://api.openai.com/v1/responses",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            if response.is_error:
+                logger.warning(
+                    "OpenAI eBay aspect request failed: status=%s model=%s aspect_count=%s body=%s",
+                    response.status_code,
+                    self.model,
+                    len(required_aspects),
+                    _truncate_for_log(response.text),
+                )
+            response.raise_for_status()
+            data = response.json()
+
+        structured_output = _extract_structured_output(data)
+        aspects = structured_output.get("aspects") if isinstance(structured_output, dict) else None
+        if not isinstance(aspects, list):
+            raise ValueError("Vision-Provider hat keine eBay-Merkmale geliefert")
+        return [
+            {
+                "name": str(item.get("name") or "").strip(),
+                "value": str(item.get("value") or "").strip(),
+                "confidence": str(item.get("confidence") or "").strip(),
+            }
+            for item in aspects
+            if isinstance(item, dict)
+        ]
 
 
 def _truncate_for_log(value: str, *, limit: int = 1200) -> str:

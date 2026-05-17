@@ -59,6 +59,7 @@ class EbayDraftData(BaseModel):
     offer_data: dict[str, Any] = Field(default_factory=dict, alias="offerData")
     inventory_item_key: str | None = Field(default=None, alias="inventoryItemKey")
     offer_id: str | None = Field(default=None, alias="offerId")
+    listing_id: str | None = Field(default=None, alias="listingId")
     image_urls: list[str] = Field(default_factory=list, alias="imageUrls")
 
     model_config = ConfigDict(populate_by_name=True)

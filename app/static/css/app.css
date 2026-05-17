@@ -385,6 +385,13 @@ code {
   margin-bottom: 1rem;
 }
 
+.inline-field-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
 .field input,
 .field textarea,
 .field select {
@@ -408,6 +415,34 @@ code {
 .field textarea {
   resize: vertical;
   min-height: 7.5rem;
+}
+
+.inline-field-action .button {
+  min-height: 100%;
+  white-space: nowrap;
+}
+
+.field-help--loading {
+  display: inline-flex;
+  gap: 0.55rem;
+  align-items: center;
+  color: var(--text);
+}
+
+.field-help--loading::before {
+  content: "";
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 2px solid rgba(37, 99, 235, 0.18);
+  border-top-color: rgba(37, 99, 235, 0.85);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .field-help {
@@ -454,6 +489,12 @@ code {
   display: block;
   color: var(--text-soft);
   line-height: 1.35;
+}
+
+.category-aspect-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .suggestion-list__item strong,
@@ -635,6 +676,36 @@ code {
 
 .action-strip {
   margin-bottom: 1rem;
+}
+
+.profile-status-list {
+  padding: 1rem;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: rgba(237, 241, 236, 0.64);
+}
+
+.profile-status-list h4 {
+  margin: 0 0 0.75rem;
+}
+
+.profile-status-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.profile-status-list li {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.profile-status-list span {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  word-break: break-word;
 }
 
 .detail-disclosure {

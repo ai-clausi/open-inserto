@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     ebay_client_id: str | None = None
     ebay_client_secret: str | None = None
     ebay_ru_name: str | None = None
+    ebay_sandbox_client_id: str | None = None
+    ebay_sandbox_client_secret: str | None = None
+    ebay_sandbox_ru_name: str | None = None
+    ebay_live_client_id: str | None = None
+    ebay_live_client_secret: str | None = None
+    ebay_live_ru_name: str | None = None
 
     draft_analysis_backend: str = Field(default="auto", pattern="^(heuristic|vision|auto)$")
     vision_provider: str = Field(default="openai", pattern="^(openai)$")
@@ -42,6 +48,16 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    def model_post_init(self, __context) -> None:
+        if self.ebay_mode == "live":
+            self.ebay_client_id = self.ebay_live_client_id or self.ebay_client_id
+            self.ebay_client_secret = self.ebay_live_client_secret or self.ebay_client_secret
+            self.ebay_ru_name = self.ebay_live_ru_name or self.ebay_ru_name
+        else:
+            self.ebay_client_id = self.ebay_sandbox_client_id or self.ebay_client_id
+            self.ebay_client_secret = self.ebay_sandbox_client_secret or self.ebay_client_secret
+            self.ebay_ru_name = self.ebay_sandbox_ru_name or self.ebay_ru_name
+
     @property
     def database_path(self) -> Path:
         prefix = "sqlite:///"
@@ -58,6 +74,12 @@ class Settings(BaseSettings):
         if self.ebay_mode == "live":
             return "https://api.ebay.com"
         return "https://api.sandbox.ebay.com"
+
+    @property
+    def ebay_media_base_url(self) -> str:
+        if self.ebay_mode == "live":
+            return "https://apim.ebay.com"
+        return "https://apim.sandbox.ebay.com"
 
     @property
     def ebay_auth_base_url(self) -> str:

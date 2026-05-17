@@ -24,10 +24,16 @@ def _append_unique(items: list[str], seen: set[str], value: str, *, product_key:
     if not item:
         return
     key = _dedupe_key(item)
+    generic_key = _generic_item_key(item)
     if key in seen:
         return
     if product_key and key != product_key and product_key in key:
         return
+    if product_key and generic_key and generic_key != product_key:
+        product_tokens = set(product_key.split())
+        generic_tokens = set(generic_key.split())
+        if generic_tokens and generic_tokens.issubset(product_tokens):
+            return
     seen.add(key)
     items.append(item)
 
@@ -35,5 +41,14 @@ def _append_unique(items: list[str], seen: set[str], value: str, *, product_key:
 def _dedupe_key(value: str) -> str:
     text = value.casefold()
     text = re.sub(r"\([^)]*\)", " ", text)
+    text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
+    return " ".join(text.split())
+
+
+def _generic_item_key(value: str) -> str:
+    text = value.casefold()
+    text = re.sub(r"\([^)]*\)", " ", text)
+    text = re.sub(r"\b\d+\s*x\b", " ", text)
+    text = re.sub(r"\b\d+\s*stück\b", " ", text)
     text = re.sub(r"[^a-z0-9äöüß]+", " ", text)
     return " ".join(text.split())

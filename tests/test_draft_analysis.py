@@ -12,8 +12,10 @@ from app.drafts.analysis import (
     HeuristicDraftAnalysisService,
     VisionDraftAnalysisService,
     apply_analysis_result,
+    autofill_ebay_required_aspects,
     build_draft_analysis_service,
 )
+from app.core.config import Settings
 from app.drafts.models import Draft, SourceImage, WorkflowStatus
 from app.drafts.vision import _extract_structured_output
 
@@ -129,6 +131,38 @@ def test_analysis_rephrases_image_analysis_language_in_listing_issues():
     assert analysis.listing.issues == ["Fernbedienung und weiteres Zubehör sind nicht enthalten."]
 
 
+def test_analysis_rephrases_generic_device_word_in_listing_issues():
+    service = HeuristicDraftAnalysisService()
+    draft = build_draft(
+        user_input={
+            "product_name": "Holz-Kommode IKEA",
+            "condition": "gebraucht",
+            "hints": "Das Gerät zeigt Gebrauchsspuren",
+        },
+        notes="Kommode aus Holz",
+    )
+
+    analysis = service.analyze(draft)
+
+    assert analysis.listing.issues == ["Der Artikel zeigt Gebrauchsspuren"]
+
+
+def test_included_items_deduplicates_generic_product_variant():
+    service = HeuristicDraftAnalysisService()
+    draft = build_draft(
+        user_input={
+            "product_name": "Holz-Kommode IKEA",
+            "condition": "gebraucht",
+            "accessories": "1x Kommode",
+        },
+        notes="Kommode aus Holz",
+    )
+
+    analysis = service.analyze(draft)
+
+    assert analysis.listing.included_items == ["Holz-Kommode IKEA"]
+
+
 def test_heuristic_analysis_marks_missing_core_information():
     service = HeuristicDraftAnalysisService()
     draft = build_draft(user_input={"hints": "Funktionsstatus unklar"})
@@ -158,8 +192,74 @@ def test_apply_analysis_result_updates_draft_fields():
     assert updated.workflow.status == WorkflowStatus.DRAFT
     assert updated.workflow.missing_information == ["Zustand fehlt"]
     assert "confidenceNotes" in updated.listing.attributes
-    assert updated.source.user_input["product_name"] == "Kamera"
-    assert updated.source.user_input["hints"] == "Akku fehlt"
+    assert updated.listing.attributes["originalInput"]["userInput"]["product_name"] == "Kamera"
+    assert updated.listing.attributes["originalInput"]["userInput"]["hints"] == "Akku fehlt"
+
+
+def test_apply_analysis_result_preserves_existing_original_input():
+    service = HeuristicDraftAnalysisService()
+    draft = build_draft(user_input={"product_name": "Originalprodukt"})
+    draft.listing.attributes["originalInput"] = {
+        "notes": "Originale Notiz",
+        "userInput": {"product_name": "Originalprodukt"},
+    }
+    draft.source.user_input["product_name"] = "Bearbeiteter Titel"
+    draft.source.notes = "Bearbeitete Notiz"
+
+    analysis = service.analyze(draft)
+    updated = apply_analysis_result(draft, analysis)
+
+    assert updated.listing.attributes["originalInput"] == {
+        "notes": "Originale Notiz",
+        "userInput": {"product_name": "Originalprodukt"},
+    }
+
+
+def test_vision_analysis_deduplicates_rephrased_user_hint(tmp_path: Path):
+    write_image(tmp_path)
+    client = StubVisionClient(
+        {
+            "title": "Satechi Multi-Port Ethernet Adapter 4K SI USB Typ-C Hub, Silber",
+            "condition": "gebraucht",
+            "description": "Angeboten wird ein Satechi Multi-Port Ethernet Adapter.",
+            "brand": "Satechi",
+            "model": "Multi-Port Ethernet Adapter 4K SI",
+            "productIdentifierType": "",
+            "productIdentifierValue": "",
+            "keyTechnicalDetails": [],
+            "includedItems": ["Satechi Multi-Port Ethernet Adapter"],
+            "issues": ["Der RJ45 Ethernet Anschluss hält das verwendete Ethernetkabel nicht sehr gut"],
+            "categorySuggestion": "Computer Zubehör > Adapter",
+            "missingInformation": [],
+            "confidenceNotes": [],
+            "confidenceLevel": "high",
+        }
+    )
+    draft = build_draft(
+        user_input={
+            "product_name": "SATECHI MULTI-PORT ETHERNET ADAPTER 4K SI USB Typ-C Hub, Silber",
+            "condition": "gebraucht",
+            "hints": "Das von mir verwendete Ethernetkabel hat in dem RJ45 Anschluss nicht sehr gut gehalten",
+        }
+    )
+    service = VisionDraftAnalysisService(client=client, project_dir=tmp_path)
+
+    analysis = service.analyze(draft)
+
+    assert analysis.listing.issues == ["Der RJ45 Ethernet Anschluss hält das verwendete Ethernetkabel nicht sehr gut"]
+
+
+def test_apply_analysis_result_normalizes_all_caps_user_title_when_ai_title_matches():
+    draft = build_draft(
+        user_input={
+            "product_name": "SATECHI MULTI-PORT ETHERNET ADAPTER 4K SI USB Typ-C Hub, Silber",
+        }
+    )
+    analysis = HeuristicDraftAnalysisService().analyze(draft)
+
+    updated = apply_analysis_result(draft, analysis)
+
+    assert updated.listing.title == "Satechi Multi-Port Ethernet Adapter 4K SI USB Typ-C Hub, Silber"
 
 
 def test_vision_analysis_maps_structured_payload_and_uses_notes_and_images(tmp_path: Path):
@@ -307,3 +407,47 @@ def test_extract_structured_output_falls_back_to_output_text_json():
     extracted = _extract_structured_output(payload)
 
     assert extracted == {"title": "Steam Deck", "condition": "sehr gut"}
+
+
+def test_autofill_ebay_required_aspects_uses_existing_listing_data(tmp_path: Path):
+    settings = Settings(
+        project_dir=tmp_path,
+        data_dir=tmp_path / "data",
+        database_url=f"sqlite:///{tmp_path / 'open_inserto.db'}",
+        draft_analysis_backend="heuristic",
+        _env_file=None,
+    )
+    draft = Draft(
+        id="draft_aspects",
+        sku="OIN-ASPECT",
+        listing={
+            "title": "Bose SoundTouch 10 wireless music system",
+            "brand": "Bose",
+            "model": "SoundTouch 10",
+            "categorySuggestion": "14990",
+            "attributes": {
+                "ebayCategory": {
+                    "state": "manual_id",
+                    "selected_id": "14990",
+                    "selected_name": "Lautsprecher & Subwoofer",
+                    "selected_path": "TV, Video & Audio > Heim-Audio & HiFi > Lautsprecher & Subwoofer",
+                    "aspects": [
+                        {"name": "Marke", "required": True, "values": []},
+                        {"name": "Markenkompatibilität", "required": True, "values": []},
+                        {"name": "Modellkompatibilität", "required": True, "values": []},
+                        {"name": "Produktart", "required": True, "values": ["Lautsprecher", "Aufkleber"]},
+                    ],
+                }
+            },
+        },
+    )
+
+    changed = autofill_ebay_required_aspects(draft, settings)
+
+    assert changed is True
+    assert draft.listing.attributes["ebayAspects"] == {
+        "Marke": "Bose",
+        "Markenkompatibilität": "Bose",
+        "Modellkompatibilität": "SoundTouch 10",
+        "Produktart": "Lautsprecher",
+    }

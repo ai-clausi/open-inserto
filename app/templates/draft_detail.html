@@ -59,6 +59,15 @@
             <li>{{ item }}</li>
           {% endfor %}
         </ul>
+        {% if marketplace_error_groups.setup %}
+          <div class="button-row button-row--single">
+            <a class="button button--secondary" href="/">eBay-Setup öffnen</a>
+          </div>
+        {% elif marketplace_error_groups.item %}
+          <div class="button-row button-row--single">
+            <a class="button button--secondary" href="#listing-editor">Artikelangaben ergänzen</a>
+          </div>
+        {% endif %}
       </div>
     {% endif %}
   </section>
@@ -174,6 +183,22 @@
       <input id="condition" name="condition" type="text" value="{{ draft.listing.condition }}" placeholder="z. B. gebraucht, voll funktionsfähig">
     </label>
 
+    <label class="field field--full" for="shipping_profile">
+      <span>Versandprofil <span class="field-badge field-badge--required">Für eBay-Angebot nötig</span></span>
+      <select id="shipping_profile" name="shipping_profile">
+        {% for profile in shipping_profiles %}
+          <option value="{{ profile.key }}" data-description="{{ profile.description }}" {% if profile.selected %}selected{% endif %}>
+            {{ profile.label }}{% if not profile.policy_id %} (Policy fehlt){% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      <span class="field-help" id="shipping_profile_description">
+        {% for profile in shipping_profiles %}
+          {% if profile.selected %}{{ profile.description }}{% endif %}
+        {% endfor %}
+      </span>
+    </label>
+
     <label class="field field--full" for="description">
       <span>Verkaufstext {{ source_badge('description') }}</span>
       <textarea id="description" name="description" rows="6" placeholder="Angeboten wird ...">{{ review_form_values.description }}</textarea>
@@ -194,7 +219,7 @@
       <textarea id="hints" name="hints" rows="4" placeholder="Nur relevante Mängel, Gebrauchsspuren oder offene Prüfpunkte">{{ review_form_values.hints }}</textarea>
     </label>
 
-    <details class="detail-disclosure">
+    <details class="detail-disclosure" {% if open_ebay_details %}open{% endif %}>
       <summary>Weitere eBay-Angaben anzeigen</summary>
       <label class="field field--full" for="subtitle">
         <span>{{ optional_fields['subtitle'] }}</span>
@@ -204,8 +229,17 @@
         <span>{{ optional_fields['category_suggestion'] }} <span class="field-badge field-badge--required">Für eBay-Draft nötig</span></span>
         <input id="category_suggestion" name="category_suggestion" type="text" value="{{ draft.listing.category_suggestion }}" placeholder="z. B. 80053">
       </label>
-      {% if category_resolution.suggestions %}
-        <div class="category-choice-list" aria-label="eBay-Kategorievorschläge">
+      <div class="field field--full">
+        <span>Kategorie suchen</span>
+        <div class="inline-field-action">
+          <input id="category_search_query" name="category_search_query" type="text" value="{{ category_resolution.query or draft.listing.title }}" placeholder="z. B. Apple Magic Mouse oder Computer Maus">
+          <button class="button button--secondary" type="button" id="category_search_button">Kategorie suchen</button>
+        </div>
+        <p class="field-help" id="category_search_status">Sucht neue eBay-Kategorievorschläge, ohne eine numerische ID manuell nachschlagen zu müssen.</p>
+      </div>
+      <div id="category_search_results">
+        {% if category_resolution.suggestions %}
+          <div class="category-choice-list" aria-label="eBay-Kategorievorschläge">
           {% for item in category_resolution.suggestions %}
             <label class="category-choice">
               <input type="radio" name="selected_category_suggestion" value="{{ item.id }}" {% if draft.listing.category_suggestion == item.id or category_resolution.selected_id == item.id %}checked{% endif %}>
@@ -215,16 +249,42 @@
               </span>
             </label>
           {% endfor %}
+          </div>
+        {% endif %}
+        {% if category_resolution.selected_name %}
+          <p class="field-help">Aufgelöst zu: <strong>{{ category_resolution.selected_name }}</strong>{% if category_resolution.selected_id %} · ID {{ category_resolution.selected_id }}{% endif %}</p>
+        {% endif %}
+        {% if category_resolution.selected_path %}
+          <p class="field-help">{{ category_resolution.selected_path }}</p>
+        {% endif %}
+        {% if category_resolution.message %}
+          <p class="field-help">{{ category_resolution.message }}</p>
+        {% endif %}
+      </div>
+      {% if required_category_aspects %}
+        <div class="field field--full">
+          <span>Pflichtangaben für eBay</span>
+          <div class="category-aspect-list">
+            {% for aspect in required_category_aspects %}
+              {% set aspect_name = aspect.get('name') %}
+              {% set aspect_options = aspect.get('values', []) %}
+              <label class="field" for="ebay_aspect_{{ loop.index }}">
+                <span>{{ aspect_name }}</span>
+                {% if aspect_options %}
+                  <select id="ebay_aspect_{{ loop.index }}" name="ebay_aspect__{{ aspect_name }}">
+                    <option value="">Bitte auswählen</option>
+                    {% for value in aspect_options %}
+                      <option value="{{ value }}" {% if ebay_aspect_values.get(aspect_name) == value %}selected{% endif %}>{{ value }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <input id="ebay_aspect_{{ loop.index }}" name="ebay_aspect__{{ aspect_name }}" type="text" value="{{ ebay_aspect_values.get(aspect_name, '') }}" placeholder="{{ aspect_name }}">
+                {% endif %}
+              </label>
+            {% endfor %}
+          </div>
+          <p class="field-help">Diese Merkmale kommen direkt aus der gewählten eBay-Kategorie und werden beim Veröffentlichen übertragen.</p>
         </div>
-      {% endif %}
-      {% if category_resolution.selected_name %}
-        <p class="field-help">Aufgelöst zu: <strong>{{ category_resolution.selected_name }}</strong>{% if category_resolution.selected_id %} · ID {{ category_resolution.selected_id }}{% endif %}</p>
-      {% endif %}
-      {% if category_resolution.selected_path %}
-        <p class="field-help">{{ category_resolution.selected_path }}</p>
-      {% endif %}
-      {% if category_resolution.message %}
-        <p class="field-help">{{ category_resolution.message }}</p>
       {% endif %}
     </details>
 
@@ -259,6 +319,36 @@
     <h2>eBay-Draft</h2>
     <p><strong>{{ result_summary.headline }}</strong></p>
     <p class="section-copy">{{ result_summary.body }}</p>
+    {% set ebay_error = draft.marketplace.ebay.offer_data.get('lastError') %}
+    {% if draft.marketplace.ebay.listing_id %}
+      <div class="notice notice--success">
+        <h3>Bei eBay veröffentlicht</h3>
+        <p>Listing-ID: <strong>{{ draft.marketplace.ebay.listing_id }}</strong></p>
+        {% if ebay_listing_url %}
+          <a class="button button--secondary" href="{{ ebay_listing_url }}" target="_blank" rel="noopener">eBay-Listing öffnen</a>
+        {% endif %}
+      </div>
+    {% elif draft.marketplace.ebay.offer_id %}
+      <div class="notice notice--success">
+        <h3>eBay-Angebot vorbereitet</h3>
+        <p>
+          Offer-ID: <strong>{{ draft.marketplace.ebay.offer_id }}</strong>
+          · SKU: <strong>{{ draft.marketplace.ebay.inventory_item_key or draft.sku }}</strong>
+        </p>
+        <p>
+          Der Eintrag wurde als Inventory-API-Offer angelegt. Er ist noch nicht als öffentliches Listing sichtbar,
+          solange er nicht veröffentlicht wurde.
+        </p>
+        <a class="button button--secondary" href="{{ ebay_seller_hub_drafts_url }}" target="_blank" rel="noopener">eBay Seller Hub öffnen</a>
+      </div>
+      <div class="notice notice--warning">
+        <h3>Jetzt veröffentlichen</h3>
+        <p>Dieser Schritt prüft und aktualisiert das vorbereitete eBay-Angebot und schaltet es danach live. Prüfe vorher Titel, Beschreibung, Preis, Versandprofil, Kategorie und Bilder.</p>
+        <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay/publish" class="stack-md">
+          <button class="button button--primary" type="submit">Bei eBay veröffentlichen</button>
+        </form>
+      </div>
+    {% endif %}
     {% if marketplace_notes %}
       <details class="detail-disclosure">
         <summary>Hinweise zum eBay-Draft anzeigen</summary>
@@ -273,11 +363,24 @@
         </div>
       </details>
     {% endif %}
-    {% set ebay_error = draft.marketplace.ebay.offer_data.get('lastError') %}
     {% if ebay_error %}
       <div class="notice notice--error">
         <h3>Letzter Fehler</h3>
         <p>{{ ebay_error }}</p>
+      </div>
+    {% endif %}
+    {% if marketplace_error_groups.setup %}
+      <div class="notice notice--warning">
+        <h3>Setup abschließen</h3>
+        <p>Einige eBay-Voraussetzungen fehlen noch. Öffne das Setup, lade die Account-Ressourcen und lege fehlende Versandprofile oder Policies an.</p>
+        <a class="button button--secondary" href="/">Zum eBay-Setup</a>
+      </div>
+    {% endif %}
+    {% if marketplace_error_groups.item %}
+      <div class="notice notice--warning">
+        <h3>Artikelangaben ergänzen</h3>
+        <p>Für die gewählte Kategorie fehlen noch artikelspezifische eBay-Pflichtangaben. Ergänze sie im Formularbereich „Weitere eBay-Angaben“.</p>
+        <a class="button button--secondary" href="#listing-editor">Zu den Artikelangaben</a>
       </div>
     {% endif %}
     {% if not ebay_auth_connected %}
@@ -286,7 +389,7 @@
       </form>
     {% endif %}
     <form method="post" action="/drafts/{{ draft.id }}/marketplace/ebay" class="stack-md" id="ebay-send">
-      <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Draft senden</button>
+      <button class="button button--primary" type="submit" {% if ebay_action_disabled %}disabled{% endif %}>eBay-Angebot vorbereiten</button>
     </form>
   </article>
 
@@ -318,4 +421,91 @@
     </dl>
   </details>
 </section>
+<script>
+  const shippingProfileSelect = document.querySelector("#shipping_profile");
+  const shippingProfileDescription = document.querySelector("#shipping_profile_description");
+  if (shippingProfileSelect && shippingProfileDescription) {
+    shippingProfileSelect.addEventListener("change", () => {
+      const option = shippingProfileSelect.selectedOptions[0];
+      shippingProfileDescription.textContent = option ? option.dataset.description || "" : "";
+    });
+  }
+
+  const categorySearchInput = document.querySelector("#category_search_query");
+  const categorySearchButton = document.querySelector("#category_search_button");
+  const categorySearchStatus = document.querySelector("#category_search_status");
+  const categorySearchResults = document.querySelector("#category_search_results");
+  const categorySuggestionInput = document.querySelector("#category_suggestion");
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function renderCategoryResults(data) {
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    const selectedId = String(data.selectedId || data.categorySuggestion || "");
+    const choices = suggestions.map((item) => {
+      const id = String(item.id || "");
+      const checked = selectedId === id ? " checked" : "";
+      return `
+        <label class="category-choice">
+          <input type="radio" name="selected_category_suggestion" value="${escapeHtml(id)}"${checked}>
+          <span>
+            <strong>${escapeHtml(item.name)}</strong>
+            <small>${escapeHtml(item.path)} · ID ${escapeHtml(id)}</small>
+          </span>
+        </label>
+      `;
+    }).join("");
+    const selected = data.selectedName
+      ? `<p class="field-help">Aufgelöst zu: <strong>${escapeHtml(data.selectedName)}</strong>${data.selectedId ? ` · ID ${escapeHtml(data.selectedId)}` : ""}</p>`
+      : "";
+    const selectedPath = data.selectedPath ? `<p class="field-help">${escapeHtml(data.selectedPath)}</p>` : "";
+    const message = data.message ? `<p class="field-help">${escapeHtml(data.message)}</p>` : "";
+    categorySearchResults.innerHTML = `
+      ${choices ? `<div class="category-choice-list" aria-label="eBay-Kategorievorschläge">${choices}</div>` : ""}
+      ${selected}
+      ${selectedPath}
+      ${message}
+    `;
+    if (categorySuggestionInput && data.categorySuggestion) {
+      categorySuggestionInput.value = data.categorySuggestion;
+    }
+  }
+
+  if (categorySearchInput && categorySearchButton && categorySearchStatus && categorySearchResults) {
+    categorySearchButton.addEventListener("click", async () => {
+      const query = categorySearchInput.value.trim();
+      if (!query) {
+        categorySearchStatus.textContent = "Bitte gib einen Suchbegriff ein.";
+        return;
+      }
+      categorySearchButton.disabled = true;
+      categorySearchStatus.classList.add("field-help--loading");
+      categorySearchStatus.textContent = "Kategorien werden bei eBay gesucht ...";
+      const body = new FormData();
+      body.append("query", query);
+      try {
+        const response = await fetch(`/drafts/{{ draft.id }}/category/search`, {
+          method: "POST",
+          body,
+          headers: { "Accept": "application/json" },
+        });
+        const data = await response.json();
+        renderCategoryResults(data);
+        categorySearchStatus.textContent = data.ok ? "Kategoriesuche abgeschlossen." : data.message || "Kategoriesuche fehlgeschlagen.";
+      } catch (error) {
+        categorySearchStatus.textContent = "Kategoriesuche fehlgeschlagen.";
+      } finally {
+        categorySearchStatus.classList.remove("field-help--loading");
+        categorySearchButton.disabled = false;
+      }
+    });
+  }
+</script>
 {% endblock %}

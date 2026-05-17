@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 
 
 def test_get_settings_reads_env_file_from_project_dir_not_cwd(tmp_path: Path, monkeypatch):
@@ -70,3 +70,55 @@ def test_get_settings_reads_draft_analysis_configuration(tmp_path: Path, monkeyp
     assert settings.vision_max_images == 3
     assert settings.has_vision_config is True
     get_settings.cache_clear()
+
+
+def test_settings_selects_sandbox_ebay_credentials():
+    settings = Settings(
+        _env_file=None,
+        ebay_mode="sandbox",
+        ebay_sandbox_client_id="sandbox-client",
+        ebay_sandbox_client_secret="sandbox-secret",
+        ebay_sandbox_ru_name="sandbox-runame",
+        ebay_live_client_id="live-client",
+        ebay_live_client_secret="live-secret",
+        ebay_live_ru_name="live-runame",
+    )
+
+    assert settings.ebay_client_id == "sandbox-client"
+    assert settings.ebay_client_secret == "sandbox-secret"
+    assert settings.ebay_ru_name == "sandbox-runame"
+    assert settings.ebay_api_base_url == "https://api.sandbox.ebay.com"
+    assert settings.ebay_media_base_url == "https://apim.sandbox.ebay.com"
+
+
+def test_settings_selects_live_ebay_credentials():
+    settings = Settings(
+        _env_file=None,
+        ebay_mode="live",
+        ebay_sandbox_client_id="sandbox-client",
+        ebay_sandbox_client_secret="sandbox-secret",
+        ebay_sandbox_ru_name="sandbox-runame",
+        ebay_live_client_id="live-client",
+        ebay_live_client_secret="live-secret",
+        ebay_live_ru_name="live-runame",
+    )
+
+    assert settings.ebay_client_id == "live-client"
+    assert settings.ebay_client_secret == "live-secret"
+    assert settings.ebay_ru_name == "live-runame"
+    assert settings.ebay_api_base_url == "https://api.ebay.com"
+    assert settings.ebay_media_base_url == "https://apim.ebay.com"
+
+
+def test_settings_keeps_legacy_ebay_credentials_as_fallback():
+    settings = Settings(
+        _env_file=None,
+        ebay_mode="live",
+        ebay_client_id="legacy-client",
+        ebay_client_secret="legacy-secret",
+        ebay_ru_name="legacy-runame",
+    )
+
+    assert settings.ebay_client_id == "legacy-client"
+    assert settings.ebay_client_secret == "legacy-secret"
+    assert settings.ebay_ru_name == "legacy-runame"

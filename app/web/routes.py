@@ -1,12 +1,13 @@
 from pathlib import Path
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import get_settings
-from app.drafts.analysis import apply_analysis_result, build_draft_analysis_service
+from app.drafts.analysis import apply_analysis_result, autofill_ebay_required_aspects, build_draft_analysis_service
 from app.drafts.repository import DraftRepository
 from app.drafts.models import WorkflowStatus
 from app.drafts.rendering import refresh_listing_description
@@ -27,8 +28,8 @@ from app.drafts.upload_service import DraftUploadService, UploadAsset, UploadVal
 from app.marketplaces.ebay.service import EbayMarketplaceService
 from app.marketplaces.ebay.auth import EbayAuthStore, build_auth_connect_url, has_usable_auth_tokens
 from app.marketplaces.ebay.client import EbayApiError, EbayAuthError, EbayClient, EbayValidationError, normalize_search_text
-from app.marketplaces.ebay.configuration import EbayConfigStore
-from app.marketplaces.ebay.taxonomy import get_category_resolution, resolve_category_suggestion_for_draft
+from app.marketplaces.ebay.configuration import DEFAULT_SHIPPING_PROFILE, PAYMENT_POLICY_NAME, RETURN_POLICY_NAME, SHIPPING_PROFILES, EbayConfigStore, normalize_shipping_profile
+from app.marketplaces.ebay.taxonomy import get_category_resolution, get_required_category_aspects, resolve_category_search_for_draft, resolve_category_suggestion_for_draft
 from app.marketplaces.ebay.validation import collect_marketplace_notes, collect_marketplace_readiness_errors
 
 router = APIRouter()
@@ -67,10 +68,10 @@ def build_draft_display_status(
     if review_state is None:
         review_state = evaluate_review_state(draft)
 
+    if draft.marketplace.ebay.listing_id or draft.workflow.status is WorkflowStatus.PUBLISHED:
+        return DraftDisplayStatus("published", "Bei eBay veröffentlicht", "success")
     if draft.marketplace.ebay.offer_id or draft.workflow.status is WorkflowStatus.OFFER_CREATED:
-        return DraftDisplayStatus("offer_created", "eBay-Draft erstellt", "success")
-    if draft.workflow.status is WorkflowStatus.PUBLISHED:
-        return DraftDisplayStatus("published", "Veröffentlicht", "success")
+        return DraftDisplayStatus("offer_created", "eBay-Angebot vorbereitet", "success")
     if draft.workflow.status is WorkflowStatus.ERROR:
         return DraftDisplayStatus("error", "Fehler", "warning")
 
@@ -99,8 +100,8 @@ def review_status_label(review_state: str) -> str:
 
 def build_context(request: Request, **extra):
     settings = get_settings()
-    auth_store = EbayAuthStore(settings.database_path)
-    config_store = EbayConfigStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
+    config_store = _ebay_config_store(settings)
     token_data = auth_store.get_tokens()
     ebay_auth_connected = has_usable_auth_tokens(token_data)
     effective_config = config_store.get_effective_configuration()
@@ -110,6 +111,7 @@ def build_context(request: Request, **extra):
         "request": request,
         "app_name": settings.app_name,
         "ebay_mode": settings.ebay_mode,
+        "ebay_seller_hub_drafts_url": _ebay_seller_hub_drafts_url(settings),
         "database_url": settings.database_url,
         "draft_analysis_backend": settings.draft_analysis_backend,
         "ai_configuration_status": ai_configuration_status,
@@ -117,10 +119,137 @@ def build_context(request: Request, **extra):
         "ebay_auth_connected": ebay_auth_connected,
         "ebay_effective_config": effective_config,
         "ebay_discovered_resources": discovered_resources,
+        "ebay_shipping_profile_setup": get_shipping_profile_setup(effective_config),
         "ebay_policy_management_opted_in": extra.get("ebay_policy_management_opted_in"),
     }
     context.update(extra)
     return context
+
+
+def _ebay_auth_store(settings):
+    return EbayAuthStore(settings.database_path, mode=settings.ebay_mode)
+
+
+def _ebay_config_store(settings):
+    return EbayConfigStore(settings.database_path, mode=settings.ebay_mode)
+
+
+def _ebay_seller_hub_drafts_url(settings) -> str:
+    if settings.ebay_mode == "live" and settings.ebay_marketplace_id == "EBAY_DE":
+        return "https://www.ebay.de/sh/lst/drafts"
+    if settings.ebay_mode == "live":
+        return "https://www.ebay.com/sh/lst/drafts"
+    return "https://www.sandbox.ebay.com/sh/lst/drafts"
+
+
+def _ebay_listing_url(settings, listing_id: str | None) -> str | None:
+    if not listing_id:
+        return None
+    if settings.ebay_mode == "live" and settings.ebay_marketplace_id == "EBAY_DE":
+        return f"https://www.ebay.de/itm/{listing_id}"
+    if settings.ebay_mode == "live":
+        return f"https://www.ebay.com/itm/{listing_id}"
+    return f"https://www.sandbox.ebay.com/itm/{listing_id}"
+
+
+def get_selected_shipping_profile(draft) -> str:
+    return normalize_shipping_profile(str(draft.listing.shipping_suggestion.get("profile") or ""))
+
+
+def get_ebay_aspect_values(draft) -> dict[str, str]:
+    values = draft.listing.attributes.get("ebayAspects")
+    if not isinstance(values, dict):
+        return {}
+    return {str(key): str(value) for key, value in values.items()}
+
+
+def update_ebay_aspects_from_form(draft, form: Any) -> None:
+    existing = get_ebay_aspect_values(draft)
+    updated = dict(existing)
+    for key, value in form.multi_items():
+        if not str(key).startswith("ebay_aspect__"):
+            continue
+        name = str(key).removeprefix("ebay_aspect__").strip()
+        text = str(value).strip()
+        if not name:
+            continue
+        if text:
+            updated[name] = text
+        else:
+            updated.pop(name, None)
+    if updated:
+        draft.listing.attributes["ebayAspects"] = updated
+    else:
+        draft.listing.attributes.pop("ebayAspects", None)
+
+
+def is_ebay_setup_error(message: str) -> bool:
+    return "ist nicht konfiguriert" in message or "eBay ist noch nicht verbunden" in message
+
+
+def is_ebay_item_error(message: str) -> bool:
+    return message.startswith("Artikelmerkmal ") or "Kategorie" in message
+
+
+def split_marketplace_errors(errors: list[str]) -> dict[str, list[str]]:
+    setup_errors = [item for item in errors if is_ebay_setup_error(item)]
+    item_errors = [item for item in errors if item not in setup_errors]
+    return {"setup": setup_errors, "item": item_errors}
+
+
+def should_open_ebay_details(category_resolution: dict[str, Any], required_category_aspects: list[dict[str, Any]], marketplace_errors: list[str]) -> bool:
+    state = str(category_resolution.get("state") or "")
+    if state in {"needs_selection", "no_match", "lookup_failed", "config_missing", "empty"}:
+        return True
+    if not str(category_resolution.get("selected_id") or "").strip():
+        return True
+    if required_category_aspects:
+        return True
+    return any(is_ebay_item_error(error) for error in marketplace_errors)
+
+
+def get_shipping_profile_options(draft, effective_config) -> list[dict[str, object]]:
+    selected = get_selected_shipping_profile(draft)
+    options = []
+    for key, profile in SHIPPING_PROFILES.items():
+        options.append(
+            {
+                "key": key,
+                "label": profile["label"],
+                "description": profile["description"],
+                "policy_id": effective_config.fulfillment_policy_id_for_profile(key),
+                "selected": key == selected,
+            }
+        )
+    return options
+
+
+def get_shipping_profile_setup(effective_config) -> dict[str, object]:
+    profiles = []
+    missing = []
+    for key, profile in SHIPPING_PROFILES.items():
+        policy_id = effective_config.fulfillment_policy_id_for_profile(key)
+        item = {
+            "key": key,
+            "label": profile["label"],
+            "description": profile["description"],
+            "policy_id": policy_id,
+            "configured": bool(policy_id),
+        }
+        profiles.append(item)
+        if not policy_id:
+            missing.append(item)
+    return {"profiles": profiles, "missing": missing, "complete": not missing}
+
+
+def sync_shipping_profile_policy_ids(config_store: EbayConfigStore, resources) -> dict[str, str]:
+    policy_ids = {
+        key: policy_id
+        for key, profile in SHIPPING_PROFILES.items()
+        if (policy_id := _find_resource_id_by_name(resources.fulfillment_policies, profile["policy_name"]))
+    }
+    config_store.save_shipping_profile_policy_ids(policy_ids)
+    return policy_ids
 
 
 def _build_ai_configuration_status(settings) -> dict[str, object]:
@@ -159,8 +288,8 @@ def build_draft_result_summary(
 
     if draft.marketplace.ebay.offer_id:
         return {
-            "headline": "eBay-Draft erfolgreich erstellt",
-            "body": "Der Draft wurde an eBay übertragen. Wenn du magst, kannst du jetzt nur noch kurz die technischen Details prüfen.",
+            "headline": "eBay-Angebot vorbereitet",
+            "body": "Das Angebot wurde bei eBay vorbereitet. Prüfe die Angaben final in Open Inserto und veröffentliche es erst danach.",
             "tone": "success",
             "primary_action_label": "Weiter prüfen",
             "primary_action_target": "technical-details",
@@ -204,9 +333,9 @@ def build_draft_result_summary(
 
     return {
         "headline": "Bereit für den nächsten Schritt",
-        "body": "Der Draft wirkt vollständig. Du kannst jetzt mit einem Klick den eBay-Draft anstoßen.",
+        "body": "Der Draft wirkt vollständig. Du kannst jetzt das eBay-Angebot per API vorbereiten.",
         "tone": "info",
-        "primary_action_label": "eBay-Draft senden",
+        "primary_action_label": "eBay-Angebot vorbereiten",
         "primary_action_target": "ebay-send",
     }
 
@@ -230,8 +359,8 @@ def index(request: Request):
 def draft_list(request: Request):
     settings = get_settings()
     repository = DraftRepository(settings.database_path)
-    auth_store = EbayAuthStore(settings.database_path)
-    config_store = EbayConfigStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
+    config_store = _ebay_config_store(settings)
     ebay_auth_connected = has_usable_auth_tokens(auth_store.get_tokens())
     effective_config = config_store.get_effective_configuration()
     drafts = sorted(
@@ -327,6 +456,7 @@ async def upload_draft(
         analysis = analysis_service.analyze(result.draft)
         apply_analysis_result(result.draft, analysis)
         resolve_category_suggestion_for_draft(result.draft, settings)
+        autofill_ebay_required_aspects(result.draft, settings)
     except UploadValidationError as exc:
         return templates.TemplateResponse(
             request,
@@ -346,12 +476,14 @@ async def upload_draft(
 def draft_detail(request: Request, draft_id: str):
     settings = get_settings()
     repository = DraftRepository(settings.database_path)
-    auth_store = EbayAuthStore(settings.database_path)
-    config_store = EbayConfigStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
+    config_store = _ebay_config_store(settings)
     draft = repository.get_draft(draft_id)
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
-    if refresh_listing_description(draft):
+    description_changed = refresh_listing_description(draft)
+    aspects_changed = autofill_ebay_required_aspects(draft, settings)
+    if description_changed or aspects_changed:
         repository.save_draft(draft)
 
     auth_tokens = auth_store.get_tokens()
@@ -371,8 +503,10 @@ def draft_detail(request: Request, draft_id: str):
     )
     ebay_action_disabled = review_state != "ready" or bool(marketplace_readiness_errors)
     current_review_status_label = review_status_label(review_state)
-    if draft.marketplace.ebay.offer_id:
-        marketplace_status_label = "Erfolgreich erstellt"
+    if draft.marketplace.ebay.listing_id or draft.workflow.status is WorkflowStatus.PUBLISHED:
+        marketplace_status_label = "Veröffentlicht"
+    elif draft.marketplace.ebay.offer_id:
+        marketplace_status_label = "Angebot vorbereitet"
     elif not marketplace_readiness_errors and draft.marketplace.ebay.offer_data.get("lastError"):
         marketplace_status_label = "Retry möglich"
     elif not marketplace_readiness_errors:
@@ -387,6 +521,8 @@ def draft_detail(request: Request, draft_id: str):
         ebay_auth_connected=ebay_auth_connected,
         marketplace_readiness_errors=marketplace_readiness_errors,
     )
+    category_resolution = get_category_resolution(draft)
+    required_category_aspects = get_required_category_aspects(draft)
 
     return templates.TemplateResponse(
         request,
@@ -400,10 +536,16 @@ def draft_detail(request: Request, draft_id: str):
             field_sources=get_field_sources(draft),
             original_input=get_original_input(draft),
             analysis_state=get_analysis_state(draft),
-            category_resolution=get_category_resolution(draft),
+            category_resolution=category_resolution,
+            required_category_aspects=required_category_aspects,
+            ebay_aspect_values=get_ebay_aspect_values(draft),
+            open_ebay_details=should_open_ebay_details(category_resolution, required_category_aspects, marketplace_readiness_errors),
             review_form_values=get_review_form_values(draft),
             review_metadata=get_review_metadata(draft),
+            shipping_profiles=get_shipping_profile_options(draft, effective_config),
+            selected_shipping_profile=get_selected_shipping_profile(draft),
             marketplace_readiness_errors=marketplace_readiness_errors,
+            marketplace_error_groups=split_marketplace_errors(marketplace_readiness_errors),
             marketplace_notes=marketplace_notes,
             ebay_action_disabled=ebay_action_disabled,
             ebay_effective_config=effective_config,
@@ -415,6 +557,7 @@ def draft_detail(request: Request, draft_id: str):
             core_fields=CORE_FIELDS,
             optional_fields=OPTIONAL_FIELDS,
             ebay_auth_connected=ebay_auth_connected,
+            ebay_listing_url=_ebay_listing_url(settings, draft.marketplace.ebay.listing_id),
             result_summary=result_summary,
         ),
     )
@@ -428,10 +571,17 @@ def draft_reanalyze(request: Request, draft_id: str):
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
 
+    previous_category = get_category_resolution(draft)
+    previous_category_id = str(previous_category.get("selected_id") or draft.listing.category_suggestion or "").strip()
+    previous_category_metadata = dict(previous_category) if previous_category_id.isdigit() else None
     analysis_service = build_draft_analysis_service(settings)
     analysis = analysis_service.analyze(draft)
     apply_analysis_result(draft, analysis)
+    if previous_category_metadata and previous_category_id:
+        draft.listing.category_suggestion = previous_category_id
+        draft.listing.attributes["ebayCategory"] = previous_category_metadata
     resolve_category_suggestion_for_draft(draft, settings)
+    autofill_ebay_required_aspects(draft, settings)
     repository.save_draft(draft)
     return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -449,10 +599,12 @@ async def draft_review_submit(
     subtitle: str = Form(default=""),
     category_suggestion: str = Form(default=""),
     selected_category_suggestion: str = Form(default=""),
+    category_search_query: str = Form(default=""),
     hints: str = Form(default=""),
     product_identifier_type: str = Form(default=""),
     product_identifier_value: str = Form(default=""),
     key_technical_details: str = Form(default=""),
+    shipping_profile: str = Form(default=DEFAULT_SHIPPING_PROFILE),
     confirm_fields: list[str] = Form(default_factory=list),
     action: str = Form(default="save"),
 ):
@@ -462,7 +614,12 @@ async def draft_review_submit(
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
 
-    submitted_category_suggestion = selected_category_suggestion.strip() or category_suggestion.strip()
+    form = await request.form()
+    submitted_category_suggestion = (
+        category_search_query.strip()
+        if action == "search_category"
+        else selected_category_suggestion.strip() or category_suggestion.strip()
+    )
 
     update_draft_from_review(
         draft,
@@ -478,16 +635,56 @@ async def draft_review_submit(
         product_identifier_type=product_identifier_type,
         product_identifier_value=product_identifier_value,
         key_technical_details=key_technical_details,
+        shipping_profile=shipping_profile,
         confirm_fields=confirm_fields,
         action=action,
     )
+    update_ebay_aspects_from_form(draft, form)
     resolve_category_suggestion_for_draft(
         draft,
         settings,
         preserve_numeric_id=bool(submitted_category_suggestion and submitted_category_suggestion.isdigit()),
     )
+    autofill_ebay_required_aspects(draft, settings)
     repository.save_draft(draft)
     return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/drafts/{draft_id}/category/search")
+async def draft_category_search(draft_id: str, request: Request):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    form = await request.form()
+    query = str(form.get("query") or "").strip()
+    if not query:
+        return JSONResponse(
+            {
+                "ok": False,
+                "message": "Bitte gib einen Suchbegriff ein.",
+                "suggestions": [],
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    resolution = resolve_category_search_for_draft(draft, settings, query)
+    autofill_ebay_required_aspects(draft, settings)
+    repository.save_draft(draft)
+    return {
+        "ok": True,
+        "categorySuggestion": draft.listing.category_suggestion,
+        "selectedId": resolution.get("selected_id", ""),
+        "selectedName": resolution.get("selected_name", ""),
+        "selectedPath": resolution.get("selected_path", ""),
+        "state": resolution.get("state", ""),
+        "message": resolution.get("message", ""),
+        "suggestions": resolution.get("suggestions", []),
+        "requiredAspects": get_required_category_aspects(draft),
+        "aspectValues": get_ebay_aspect_values(draft),
+    }
 
 
 @router.post("/drafts/{draft_id}/images", response_class=HTMLResponse)
@@ -509,6 +706,7 @@ async def draft_add_images(
     ]
     try:
         service.append_images_to_draft(draft, files=assets)
+        draft.marketplace.ebay.image_urls = []
     except UploadValidationError as exc:
         draft.marketplace.ebay.offer_data["lastError"] = str(exc)
     finally:
@@ -548,6 +746,7 @@ def draft_delete_image(draft_id: str, image_id: str):
     for index, image in enumerate(remaining, start=1):
         image.order = index
     draft.source.images = remaining
+    draft.marketplace.ebay.image_urls = []
     repository.save_draft(draft)
     return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -560,14 +759,33 @@ def draft_create_ebay_offer(draft_id: str):
     if draft is None:
         raise HTTPException(status_code=404, detail="Draft not found")
 
-    auth_store = EbayAuthStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
     service = EbayMarketplaceService(
         settings=settings,
         repository=repository,
         client=EbayClient(settings, auth_store=auth_store),
-        config_store=EbayConfigStore(settings.database_path),
+        config_store=_ebay_config_store(settings),
     )
     service.create_unpublished_offer_for_draft(draft_id)
+    return RedirectResponse(url=f"/drafts/{draft_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/drafts/{draft_id}/marketplace/ebay/publish", response_class=HTMLResponse)
+def draft_publish_ebay_offer(draft_id: str):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    auth_store = _ebay_auth_store(settings)
+    service = EbayMarketplaceService(
+        settings=settings,
+        repository=repository,
+        client=EbayClient(settings, auth_store=auth_store),
+        config_store=_ebay_config_store(settings),
+    )
+    service.publish_offer_for_draft(draft_id)
     return RedirectResponse(url=f"/drafts/{draft_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -577,7 +795,7 @@ def ebay_connect():
     if not settings.ebay_client_id or not settings.ebay_ru_name:
         raise HTTPException(status_code=400, detail="eBay OAuth ist nicht vollständig konfiguriert")
 
-    auth_store = EbayAuthStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
     state = auth_store.issue_state()
     return RedirectResponse(url=build_auth_connect_url(settings, state), status_code=status.HTTP_303_SEE_OTHER)
 
@@ -590,8 +808,8 @@ def ebay_callback(
     error: str | None = Query(default=None),
 ):
     settings = get_settings()
-    auth_store = EbayAuthStore(settings.database_path)
-    config_store = EbayConfigStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
+    config_store = _ebay_config_store(settings)
 
     if error:
         return templates.TemplateResponse(
@@ -616,6 +834,8 @@ def ebay_callback(
             resources = client.get_account_resources(client.get_access_token())
             config_store.save_discovered_resources(resources)
             effective_config = config_store.auto_select_defaults(resources)
+            sync_shipping_profile_policy_ids(config_store, resources)
+            effective_config = config_store.get_effective_configuration()
             auto_selected = []
             if effective_config.payment_policy_id:
                 auto_selected.append("Payment Policy")
@@ -655,7 +875,7 @@ async def ebay_save_defaults(
     merchant_location_key: str = Form(default=""),
 ):
     settings = get_settings()
-    config_store = EbayConfigStore(settings.database_path)
+    config_store = _ebay_config_store(settings)
     config_store.save_selected_configuration(
         payment_policy_id=payment_policy_id.strip() or None,
         fulfillment_policy_id=fulfillment_policy_id.strip() or None,
@@ -668,8 +888,8 @@ async def ebay_save_defaults(
 @router.post("/integrations/ebay/discover")
 def ebay_discover_defaults(request: Request):
     settings = get_settings()
-    auth_store = EbayAuthStore(settings.database_path)
-    config_store = EbayConfigStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
+    config_store = _ebay_config_store(settings)
     token_data = auth_store.get_tokens()
     if not has_usable_auth_tokens(token_data):
         return templates.TemplateResponse(
@@ -701,6 +921,8 @@ def ebay_discover_defaults(request: Request):
         resources = client.get_account_resources(access_token)
         config_store.save_discovered_resources(resources)
         effective_config = config_store.auto_select_defaults(resources)
+        sync_shipping_profile_policy_ids(config_store, resources)
+        effective_config = config_store.get_effective_configuration()
     except EbayAuthError as exc:
         auth_store.clear_tokens()
         return templates.TemplateResponse(
@@ -751,7 +973,7 @@ def ebay_discover_defaults(request: Request):
 @router.post("/integrations/ebay/programs/selling-policy-management/opt-in")
 def ebay_opt_in_selling_policy_management(request: Request):
     settings = get_settings()
-    auth_store = EbayAuthStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
     token_data = auth_store.get_tokens()
     if not has_usable_auth_tokens(token_data):
         return templates.TemplateResponse(
@@ -800,8 +1022,8 @@ def ebay_opt_in_selling_policy_management(request: Request):
 @router.post("/integrations/ebay/locations/create-default")
 def ebay_create_default_location(request: Request):
     settings = get_settings()
-    auth_store = EbayAuthStore(settings.database_path)
-    config_store = EbayConfigStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
+    config_store = _ebay_config_store(settings)
     token_data = auth_store.get_tokens()
     if not has_usable_auth_tokens(token_data):
         return templates.TemplateResponse(
@@ -845,6 +1067,8 @@ def ebay_create_default_location(request: Request):
             resources = client.get_account_resources(access_token)
             config_store.save_discovered_resources(resources)
             effective_config = config_store.auto_select_defaults(resources)
+            sync_shipping_profile_policy_ids(config_store, resources)
+            effective_config = config_store.get_effective_configuration()
             if not effective_config.merchant_location_key:
                 config_store.save_selected_configuration(merchant_location_key=merchant_location_key)
             success_message += " Account-Ressourcen wurden anschließend neu geladen."
@@ -885,8 +1109,8 @@ def ebay_create_default_location(request: Request):
 @router.post("/integrations/ebay/policies/create-defaults")
 def ebay_create_default_policies(request: Request):
     settings = get_settings()
-    auth_store = EbayAuthStore(settings.database_path)
-    config_store = EbayConfigStore(settings.database_path)
+    auth_store = _ebay_auth_store(settings)
+    config_store = _ebay_config_store(settings)
     token_data = auth_store.get_tokens()
     if not has_usable_auth_tokens(token_data):
         return templates.TemplateResponse(
@@ -926,42 +1150,24 @@ def ebay_create_default_policies(request: Request):
             )
 
         payment_payload = {
-            "name": "Open Inserto - Sofortzahlung",
+            "name": PAYMENT_POLICY_NAME,
             "marketplaceId": settings.ebay_marketplace_id,
             "categoryTypes": [{"name": "ALL_EXCLUDING_MOTORS_VEHICLES"}],
-            "immediatePay": True,
+            "immediatePay": False,
         }
         return_payload = {
-            "name": "Open Inserto - Keine Rücknahme",
+            "name": RETURN_POLICY_NAME,
             "marketplaceId": settings.ebay_marketplace_id,
             "categoryTypes": [{"name": "ALL_EXCLUDING_MOTORS_VEHICLES"}],
             "returnsAccepted": False,
             "description": "Privatverkauf ohne Rücknahme und Gewährleistung.",
         }
-        fulfillment_payload = {
-            "name": "Open Inserto - DHL Standard",
-            "marketplaceId": settings.ebay_marketplace_id,
-            "categoryTypes": [{"name": "ALL_EXCLUDING_MOTORS_VEHICLES"}],
-            "handlingTime": {"value": 3, "unit": "DAY"},
-            "shippingOptions": [
-                {
-                    "costType": "FLAT_RATE",
-                    "optionType": "DOMESTIC",
-                    "shippingServices": [
-                        {
-                            "shippingCarrierCode": "DHL",
-                            "shippingServiceCode": dhl_paket,
-                            "shippingCost": {"value": "6.19", "currency": settings.ebay_currency},
-                        },
-                        {
-                            "shippingCarrierCode": "DHL",
-                            "shippingServiceCode": dhl_paeckchen,
-                            "shippingCost": {"value": "5.19", "currency": settings.ebay_currency},
-                        },
-                    ],
-                }
-            ],
-        }
+        fulfillment_payloads = _build_open_inserto_fulfillment_policy_payloads(
+            marketplace_id=settings.ebay_marketplace_id,
+            currency=settings.ebay_currency,
+            dhl_paket_code=dhl_paket,
+            dhl_paeckchen_code=dhl_paeckchen,
+        )
 
         created_labels: list[str] = []
         try:
@@ -976,19 +1182,21 @@ def ebay_create_default_policies(request: Request):
         except EbayValidationError as exc:
             if not _is_duplicate_policy_error(exc):
                 raise
-        try:
-            client.create_fulfillment_policy(access_token, fulfillment_payload)
-            created_labels.append("Fulfillment Policy")
-        except EbayValidationError as exc:
-            if not _is_duplicate_policy_error(exc):
-                raise
+        for profile_key, fulfillment_payload in fulfillment_payloads.items():
+            try:
+                client.create_fulfillment_policy(access_token, fulfillment_payload)
+                created_labels.append(SHIPPING_PROFILES[profile_key]["label"])
+            except EbayValidationError as exc:
+                if not _is_duplicate_policy_error(exc):
+                    raise
 
         resources = client.get_account_resources(access_token)
         config_store.save_discovered_resources(resources)
         effective_config = config_store.auto_select_defaults(resources)
+        shipping_profile_policy_ids = sync_shipping_profile_policy_ids(config_store, resources)
         config_store.save_selected_configuration(
             payment_policy_id=_find_resource_id_by_name(resources.payment_policies, payment_payload["name"]) or effective_config.payment_policy_id,
-            fulfillment_policy_id=_find_resource_id_by_name(resources.fulfillment_policies, fulfillment_payload["name"]) or effective_config.fulfillment_policy_id,
+            fulfillment_policy_id=shipping_profile_policy_ids.get(DEFAULT_SHIPPING_PROFILE) or effective_config.fulfillment_policy_id,
             return_policy_id=_find_resource_id_by_name(resources.return_policies, return_payload["name"]) or effective_config.return_policy_id,
         )
         effective_config = config_store.get_effective_configuration()
@@ -1054,6 +1262,66 @@ def _resolve_shipping_service_code(
         if code in available_codes:
             return code
     return _find_shipping_service_code(services, search_terms)
+
+
+def _build_open_inserto_fulfillment_policy_payloads(
+    *,
+    marketplace_id: str,
+    currency: str,
+    dhl_paket_code: str,
+    dhl_paeckchen_code: str,
+) -> dict[str, dict]:
+    def shipping_policy(name: str, services: list[dict[str, str]]) -> dict:
+        return {
+            "name": name,
+            "marketplaceId": marketplace_id,
+            "categoryTypes": [{"name": "ALL_EXCLUDING_MOTORS_VEHICLES"}],
+            "handlingTime": {"value": 3, "unit": "DAY"},
+            "shippingOptions": [
+                {
+                    "costType": "FLAT_RATE",
+                    "optionType": "DOMESTIC",
+                    "shippingServices": [
+                        {
+                            "sortOrder": index,
+                            "shippingCarrierCode": "DHL",
+                            "shippingServiceCode": service["code"],
+                            "shippingCost": {"value": service["cost"], "currency": currency},
+                            "additionalShippingCost": {"value": service["cost"], "currency": currency},
+                        }
+                        for index, service in enumerate(services, start=1)
+                    ],
+                }
+            ],
+        }
+
+    return {
+        "dhl_2kg": shipping_policy(
+            SHIPPING_PROFILES["dhl_2kg"]["policy_name"],
+            [
+                {"code": dhl_paket_code, "cost": "6.19"},
+                {"code": dhl_paeckchen_code, "cost": "5.19"},
+            ],
+        ),
+        "dhl_5kg": shipping_policy(
+            SHIPPING_PROFILES["dhl_5kg"]["policy_name"],
+            [{"code": dhl_paket_code, "cost": "7.69"}],
+        ),
+        "dhl_10kg": shipping_policy(
+            SHIPPING_PROFILES["dhl_10kg"]["policy_name"],
+            [{"code": dhl_paket_code, "cost": "10.49"}],
+        ),
+        "dhl_20kg": shipping_policy(
+            SHIPPING_PROFILES["dhl_20kg"]["policy_name"],
+            [{"code": dhl_paket_code, "cost": "18.99"}],
+        ),
+        "pickup": {
+            "name": SHIPPING_PROFILES["pickup"]["policy_name"],
+            "marketplaceId": marketplace_id,
+            "categoryTypes": [{"name": "ALL_EXCLUDING_MOTORS_VEHICLES"}],
+            "localPickup": True,
+        },
+    }
 
 
 def _is_duplicate_policy_error(exc: EbayValidationError) -> bool:

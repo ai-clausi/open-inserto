@@ -68,7 +68,7 @@
         </div>
         <div class="default-card">
           <span>Fulfillment Policy</span>
-          <strong>{{ ebay_effective_config.fulfillment_policy_id or '–' }}</strong>
+          <strong>{{ 'Versandprofile vollständig' if ebay_shipping_profile_setup.complete else 'Versandprofile fehlen' }}</strong>
         </div>
         <div class="default-card">
           <span>Return Policy</span>
@@ -111,10 +111,35 @@
       {% endif %}
 
       {% if ebay_discovered_resources.payment_policies or ebay_discovered_resources.fulfillment_policies or ebay_discovered_resources.return_policies or ebay_discovered_resources.merchant_locations %}
-        {% if not ebay_discovered_resources.payment_policies or not ebay_discovered_resources.fulfillment_policies or not ebay_discovered_resources.return_policies %}
+        {% if not ebay_shipping_profile_setup.complete %}
+          <div class="notice notice--warning">
+            <h3>Versandprofile fehlen</h3>
+            <p>Für die Draft-Auswahl müssen die festen Open-Inserto-Profile für DHL und Selbstabholung im eBay-Account angelegt und zugeordnet sein.</p>
+            <ul>
+              {% for profile in ebay_shipping_profile_setup.missing %}
+                <li>{{ profile.label }}</li>
+              {% endfor %}
+            </ul>
+            <form method="post" action="/integrations/ebay/policies/create-defaults" class="stack-md">
+              <button class="button button--secondary" type="submit">Versandprofile anlegen / aktualisieren</button>
+            </form>
+          </div>
+        {% endif %}
+
+        {% if not ebay_discovered_resources.merchant_locations %}
+          <div class="notice notice--warning">
+            <h3>Merchant Location fehlt</h3>
+            <p>Für eBay-Drafts wird eine Merchant Location benötigt. Die Standard-Konfiguration legt eine aktivierte Lager-/Versandadresse für Deutschland an und speichert sie anschließend als Default.</p>
+            <form method="post" action="/integrations/ebay/locations/create-default" class="stack-md">
+              <button class="button button--secondary" type="submit">Standard-Merchant-Location anlegen</button>
+            </form>
+          </div>
+        {% endif %}
+
+        {% if not ebay_discovered_resources.payment_policies or not ebay_discovered_resources.return_policies %}
           <div class="notice notice--warning">
             <h3>Business Policies fehlen noch</h3>
-            <p>Für eBay-Drafts werden Payment-, Fulfillment- und Return-Policies benötigt. Die Standard-Konfiguration legt eine No-Returns-Policy, Sofortzahlung und DHL Standardversand mit Paket und Päckchen an.</p>
+            <p>Für eBay-Angebote werden Payment- und Return-Policies benötigt. Die Standard-Konfiguration legt eine auktionstaugliche Zahlungspolicy und keine Rücknahme an.</p>
             <form method="post" action="/integrations/ebay/policies/create-defaults" class="stack-md">
               <button class="button button--secondary" type="submit">Standard-Business-Policies anlegen</button>
             </form>
@@ -139,15 +164,17 @@
             </select>
           </label>
 
-          <label class="field field--full" for="fulfillment_policy_id">
-            <span>Fulfillment Policy</span>
-            <select id="fulfillment_policy_id" name="fulfillment_policy_id">
-              <option value="">Nicht setzen</option>
-              {% for item in ebay_discovered_resources.fulfillment_policies %}
-                <option value="{{ item.id }}" {% if ebay_effective_config.fulfillment_policy_id == item.id %}selected{% endif %}>{{ item.name or item.id }} ({{ item.id }})</option>
+          <div class="profile-status-list">
+            <h4>Versandprofile</h4>
+            <ul>
+              {% for profile in ebay_shipping_profile_setup.profiles %}
+                <li>
+                  <strong>{{ profile.label }}</strong>
+                  <span>{{ profile.policy_id or 'Policy fehlt' }}</span>
+                </li>
               {% endfor %}
-            </select>
-          </label>
+            </ul>
+          </div>
 
           <label class="field field--full" for="return_policy_id">
             <span>Return Policy</span>

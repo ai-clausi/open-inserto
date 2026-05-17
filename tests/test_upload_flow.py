@@ -271,7 +271,8 @@ def test_draft_detail_shows_marketplace_blockers_and_disables_ebay_action(client
     assert "Fulfillment Policy ist nicht konfiguriert" in detail.text
     assert "Return Policy ist nicht konfiguriert" in detail.text
     assert "Merchant Location ist nicht konfiguriert" in detail.text
-    assert '<button class="button button--primary" type="submit" disabled>eBay-Draft senden</button>' in detail.text
+    assert "Zum eBay-Setup" in detail.text
+    assert '<button class="button button--primary" type="submit" disabled>eBay-Angebot vorbereiten</button>' in detail.text
 
 
 def test_draft_detail_enables_ebay_action_when_review_and_marketplace_data_are_complete(client: TestClient):
@@ -313,7 +314,7 @@ def test_draft_detail_enables_ebay_action_when_review_and_marketplace_data_are_c
     detail = client.get(f"/drafts/{draft.id}")
 
     assert "Bereit für eBay-Draft" in detail.text
-    assert '<button class="button button--primary" type="submit" >eBay-Draft senden</button>' in detail.text
+    assert '<button class="button button--primary" type="submit" >eBay-Angebot vorbereiten</button>' in detail.text
 
 
 def test_draft_detail_shows_category_suggestions_as_choices(client: TestClient):
@@ -349,6 +350,9 @@ def test_draft_detail_shows_category_suggestions_as_choices(client: TestClient):
                     "suggestions": [
                         {"id": "84992", "name": "Autos", "path": "Spielzeug > Spielzeugautos > Autos"},
                         {"id": "9801", "name": "Automobile", "path": "Auto & Motorrad > Fahrzeuge > Automobile"},
+                    ],
+                    "aspects": [
+                        {"name": "Breite", "required": True, "values": []},
                     ],
                     "message": "",
                 }
@@ -415,6 +419,7 @@ def test_review_post_persists_selected_category_choice(client: TestClient):
             "included_items": "Audi RS3",
             "category_suggestion": "84992",
             "selected_category_suggestion": "9801",
+            "ebay_aspect__Breite": "180 cm",
             "action": "save",
         },
         follow_redirects=False,
@@ -426,6 +431,165 @@ def test_review_post_persists_selected_category_choice(client: TestClient):
     assert updated.listing.category_suggestion == "9801"
     assert updated.listing.attributes["ebayCategory"]["selected_id"] == "9801"
     assert updated.listing.attributes["ebayCategory"]["selected_name"] == "Automobile"
+    assert updated.listing.attributes["ebayAspects"]["Breite"] == "180 cm"
+
+
+def test_review_post_can_refresh_category_suggestions_with_search_query(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    settings = get_settings()
+    settings.ebay_client_id = "client-123"
+    settings.ebay_client_secret = "secret-123"
+    repository = DraftRepository(settings.database_path)
+    draft = Draft(
+        id="draft_category_search",
+        sku=derive_sku("draft_category_search"),
+        source={
+            "images": [{
+                "id": "img_01",
+                "originalFilename": "front.jpg",
+                "storagePath": "/data/test/front.jpg",
+                "mimeType": "image/jpeg",
+                "order": 1,
+                "kind": "original",
+            }],
+        },
+        listing={
+            "title": "Magic Mouse A1657 - MK2E3Z/A",
+            "descriptionHtml": "<p>Magic Mouse</p>",
+            "condition": "gebraucht",
+            "categorySuggestion": "Computer Zubehör > Eingabegeräte > Mäuse",
+        },
+    )
+    repository.save_draft(draft)
+
+    class FakeClient:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def get_application_access_token(self):
+            return object()
+
+        def get_default_category_tree_id(self, access_token):
+            return "77"
+
+        def get_category_suggestions(self, access_token, *, category_tree_id: str, query: str):
+            if query == "Computer Maus":
+                return [{"id": "23160", "name": "Mäuse, Trackballs & Touchpads", "path": "Computer > Tastaturen, Mäuse & Pointing > Mäuse, Trackballs & Touchpads"}]
+            return []
+
+        def get_item_aspects_for_category(self, access_token, *, category_tree_id: str, category_id: str):
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("app.marketplaces.ebay.taxonomy.EbayClient", FakeClient)
+
+    response = client.post(
+        f"/drafts/{draft.id}/review",
+        data={
+            "title": "Magic Mouse A1657 - MK2E3Z/A",
+            "condition": "gebraucht",
+            "description": "Magic Mouse",
+            "included_items": "Magic Mouse",
+            "category_suggestion": "Computer Zubehör > Eingabegeräte > Mäuse",
+            "category_search_query": "Computer Maus",
+            "action": "search_category",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    updated = repository.get_draft(draft.id)
+    assert updated is not None
+    assert updated.listing.category_suggestion == "23160"
+
+
+def test_category_search_endpoint_returns_suggestions_without_page_reload(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    settings = get_settings()
+    settings.ebay_client_id = "client-123"
+    settings.ebay_client_secret = "secret-123"
+    repository = DraftRepository(settings.database_path)
+    draft = Draft(
+        id="draft_category_async",
+        sku=derive_sku("draft_category_async"),
+        listing={
+            "title": "Lockenstab",
+            "descriptionHtml": "<p>Lockenstab</p>",
+            "condition": "gebraucht",
+            "categorySuggestion": "Lockenstab",
+        },
+    )
+    repository.save_draft(draft)
+
+    class FakeClient:
+        def __init__(self, settings):
+            self.settings = settings
+
+        def get_application_access_token(self):
+            return object()
+
+        def get_default_category_tree_id(self, access_token):
+            return "77"
+
+        def get_category_suggestions(self, access_token, *, category_tree_id: str, query: str):
+            return [{"id": "177659", "name": "Lockenstäbe & Glätteisen", "path": "Beauty > Haarstyling > Lockenstäbe & Glätteisen"}]
+
+        def get_item_aspects_for_category(self, access_token, *, category_tree_id: str, category_id: str):
+            return []
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr("app.marketplaces.ebay.taxonomy.EbayClient", FakeClient)
+
+    response = client.post(f"/drafts/{draft.id}/category/search", data={"query": "Lockenstab"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["categorySuggestion"] == "177659"
+    assert payload["suggestions"][0]["id"] == "177659"
+
+
+def test_draft_detail_opens_ebay_details_when_category_needs_selection(client: TestClient):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = Draft(
+        id="draft_category_open",
+        sku=derive_sku("draft_category_open"),
+        source={
+            "images": [{
+                "id": "img_01",
+                "originalFilename": "front.jpg",
+                "storagePath": "/data/test/front.jpg",
+                "mimeType": "image/jpeg",
+                "order": 1,
+                "kind": "original",
+            }],
+        },
+        listing={
+            "title": "Lockenstab",
+            "descriptionHtml": "<p>Lockenstab</p>",
+            "condition": "gebraucht",
+            "categorySuggestion": "Lockenstäbe",
+            "attributes": {
+                "ebayCategory": {
+                    "state": "no_match",
+                    "query": "Lockenstäbe",
+                    "selected_id": "",
+                    "suggestions": [],
+                    "message": "Für diese Suche wurden keine passenden eBay-Kategorien gefunden.",
+                    "aspects": [],
+                }
+            },
+        },
+    )
+    repository.save_draft(draft)
+
+    response = client.get(f"/drafts/{draft.id}")
+
+    assert '<details class="detail-disclosure" open>' in response.text
+    assert "Für diese Suche wurden keine passenden eBay-Kategorien gefunden." in response.text
 
 
 def test_draft_detail_blocks_non_numeric_ebay_category_id(client: TestClient):
@@ -454,7 +618,7 @@ def test_draft_detail_blocks_non_numeric_ebay_category_id(client: TestClient):
     assert review_response.status_code == 303
     detail = client.get(location)
     assert "eBay-Kategorie muss als numerische Category ID angegeben werden" in detail.text
-    assert '<button class="button button--primary" type="submit" disabled>eBay-Draft senden</button>' in detail.text
+    assert '<button class="button button--primary" type="submit" disabled>eBay-Angebot vorbereiten</button>' in detail.text
 
 
 def test_draft_detail_shows_primary_reconnect_action_when_auth_is_missing(client: TestClient):
@@ -554,8 +718,13 @@ def test_draft_detail_shows_success_result_with_technical_details_link(client: T
 
     detail = client.get(f"/drafts/{draft.id}")
 
-    assert "eBay-Draft erfolgreich erstellt" in detail.text
+    assert "eBay-Angebot vorbereitet" in detail.text
     assert 'href="#technical-details"' in detail.text
     assert 'href="/drafts"' in detail.text
     assert "Zurück zur Übersicht" in detail.text
+    assert "Offer-ID:" in detail.text
+    assert "offer-123" in detail.text
+    assert "eBay Seller Hub öffnen" in detail.text
+    assert "Bei eBay veröffentlichen" in detail.text
+    assert 'href="https://www.sandbox.ebay.com/sh/lst/drafts"' in detail.text
     assert "Technische Details anzeigen" in detail.text
