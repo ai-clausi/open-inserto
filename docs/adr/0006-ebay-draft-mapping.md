@@ -4,6 +4,8 @@
 
 Accepted
 
+Teilweise überholt durch ADR 0016. Insbesondere Kategorie-/Pflichtmerkmal-Handling, Condition Policies, Publish-Verhalten und die Aussage zu noch nicht automatisierten komplexen Kategorie-Merkmalen gelten in dieser Form nicht mehr.
+
 ## Context
 
 Open Inserto soll im MVP einen sicheren eBay-Draft-Workflow unterstützen.

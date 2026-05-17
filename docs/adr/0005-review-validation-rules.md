@@ -4,6 +4,8 @@
 
 Accepted
 
+Ergänzt durch ADR 0016 für eBay-Kategoriepflichtmerkmale und durch ADR 0017 für Feldherkunft und unveränderte Originaleingabe.
+
 ## Context
 
 Open Inserto erzeugt im MVP aus Bildern und wenigen Zusatzinfos zunächst nur einen Entwurf.

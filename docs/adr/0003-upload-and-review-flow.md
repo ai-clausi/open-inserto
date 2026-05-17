@@ -4,6 +4,8 @@
 
 Accepted
 
+Ergänzt durch ADR 0017 für die Trennung von unveränderter Originaleingabe, KI-generierten Werten und manuell bearbeiteten Feldern.
+
 ## Context
 
 Open Inserto soll im MVP als einfache Web-Anwendung funktionieren:

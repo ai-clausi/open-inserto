@@ -4,6 +4,8 @@
 
 Accepted
 
+Ergänzt durch ADR 0016. Der aktuelle Stand trennt Sandbox und Live weiterhin, unterstützt aber neben dem Vorbereiten unveröffentlichter Offers auch einen expliziten Veröffentlichungs-Schritt.
+
 ## Context
 
 Open Inserto soll eBay-Drafts erzeugen.

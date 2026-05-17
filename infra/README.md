@@ -56,7 +56,7 @@ The local `terraform.tfvars` should contain the real bucket name and tags, for e
 
 ```hcl
 aws_region        = "eu-west-1"
-state_bucket_name = "lukschs-open-inserto-opentofu-state"
+state_bucket_name = "your-project-opentofu-state"
 
 tags = {
   Project     = "open-inserto"
@@ -82,7 +82,7 @@ tofu apply
 `backend.hcl` contains the real state bucket:
 
 ```hcl
-bucket       = "lukschs-open-inserto-opentofu-state"
+bucket       = "your-project-opentofu-state"
 key          = "ebay-account-deletion-lambda-prod/terraform.tfstate"
 region       = "eu-west-1"
 encrypt      = true

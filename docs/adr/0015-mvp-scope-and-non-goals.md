@@ -4,6 +4,8 @@
 
 Accepted
 
+Teilweise überholt durch ADR 0016. Die Veröffentlichung bleibt ein expliziter Nutzer-Schritt nach Review, ist aber inzwischen Teil des unterstützten eBay-Flows.
+
 ## MVP-Umfang
 
 Die erste Version soll unterstützen:
@@ -15,11 +17,12 @@ Die erste Version soll unterstützen:
 - Review-Schritt
 - eBay Inventory Item Erstellung
 - unveröffentlichte eBay-Offer-Erstellung
+- explizite eBay-Veröffentlichung nach Review
 - lokale Persistenz von Draft + externen IDs
 
 ## Explizite Nicht-Ziele für den MVP
 
-- automatische Veröffentlichung ohne Review
+- automatische Veröffentlichung ohne explizite Nutzeraktion
 - Auktionssupport als primärer Pfad
 - Multi-Marketplace-Support
 - Variantenprodukte

@@ -1,6 +1,6 @@
 # open-inserto
 
-Open Inserto ist ein Tool zum Vorbereiten und perspektivisch auch Veröffentlichen von Verkaufsangeboten auf Online-Marktplätzen.
+Open Inserto ist ein Tool zum Vorbereiten und Veröffentlichen von Verkaufsangeboten auf Online-Marktplätzen.
 
 ## Zielbild
 
@@ -10,9 +10,11 @@ Das Projekt soll dabei helfen, aus Bildern und wenigen Zusatzinfos automatisch s
 - sinnvolle Titel und Beschreibungen erzeugen
 - HTML-Vorlagen befüllen
 - Angebotsdaten validieren
-- Entwürfe bei Plattformen wie eBay anlegen
-- später optional auch vollständige Veröffentlichungen unterstützen
+- Angebotsdaten lokal prüfen und korrigieren
+- eBay Inventory-Offers vorbereiten
+- geprüfte Angebote bei eBay veröffentlichen
 
+Wichtig: Die öffentliche eBay-API bietet keinen sauberen Weg, echte Seller-Hub-Entwürfe anzulegen. Open Inserto verwendet deshalb einen lokalen Draft als Review-Oberfläche. Der eBay-Schritt erstellt bzw. aktualisiert ein Inventory Item und einen unveröffentlichten Inventory Offer; erst der separate Veröffentlichungs-Schritt schaltet das Angebot live.
 
 ## MVP Scaffold lokal starten
 
@@ -27,6 +29,42 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 Dann ist die App unter <http://127.0.0.1:8000> erreichbar.
 
 Hinweis: Für Container- und Remote-Szenarien ist das explizite Host-Binding auf `0.0.0.0` wichtig, damit die Anwendung nicht nur innerhalb des Containers erreichbar ist.
+
+## Aktueller eBay-Ablauf
+
+Der lokale Draft bleibt die führende Arbeitsfläche. Dort sind Originaleingabe, KI-Vorschläge, manuelle Änderungen, Bilder, Kategorie, Versandprofil und fehlende eBay-Merkmale sichtbar.
+
+1. Beim Anlegen werden Bilder und Eingaben analysiert. Die ursprüngliche Eingabe bleibt als unveränderte Referenz erhalten.
+2. Die App schlägt Titel, Beschreibung, Lieferumfang, Zustand, Kategorie und relevante Merkmale vor.
+3. Die Kategorie wird über die eBay Taxonomy API gesucht. Nur sichere Treffer werden automatisch ausgewählt; sonst zeigt die App Vorschläge zur Auswahl.
+4. Für die gewählte Kategorie lädt die App die von eBay geforderten Artikelmerkmale und versucht sie aus vorhandenen Daten bzw. gezielt per KI zu füllen.
+5. `eBay-Angebot vorbereiten` validiert die Daten, lädt fehlende Bilder zu eBay hoch bzw. verwendet vorhandene eBay-Bild-URLs wieder, erstellt/aktualisiert das Inventory Item und erstellt/aktualisiert den unveröffentlichten Offer.
+6. `Bei eBay veröffentlichen` aktualisiert den vorbereiteten Offer erneut und ruft danach `publishOffer` auf.
+
+Fehlende Pflichtmerkmale, eine fehlende Kategorie oder ungültige eBay-Konditionswerte blockieren den eBay-Schritt vorab, damit Fehler nicht erst beim finalen Publish sichtbar werden.
+
+## Kategorie und Pflichtmerkmale
+
+Die Kategorieauswahl ist nicht hart im Code verdrahtet. Open Inserto nutzt eBay `get_category_suggestions` und bewertet die Treffer lokal gegen Titel, Produkttyp, erkannte Marke/Modell-Daten und Nutzereingaben.
+
+Die Kategorie-Suche auf der Draft-Seite läuft asynchron. Wird keine passende Kategorie automatisch gewählt, bleibt der Draft bearbeitbar und die eBay-Angaben werden geöffnet, damit Kategorie und fehlende Merkmale direkt sichtbar sind.
+
+Nach Auswahl einer Kategorie lädt Open Inserto die Kategorie-Merkmale über eBay `get_item_aspects_for_category`. Pflichtmerkmale werden vor dem Vorbereiten oder Veröffentlichen geprüft.
+
+## KI-Analyse
+
+Die KI-Analyse läuft über `DRAFT_ANALYSIS_BACKEND=auto` oder `vision`. Ohne vollständige OpenAI-Konfiguration fällt Open Inserto auf eine einfache lokale Basisanalyse zurück.
+
+An OpenAI werden die Nutzernotizen, strukturierte Eingabefelder und bis zu `VISION_MAX_IMAGES` Bilder übertragen. Die Bilder werden vorher als JPEG verkleinert. Standardwerte:
+
+```env
+VISION_IMAGE_MAX_SIDE=1024
+VISION_IMAGE_QUALITY=72
+VISION_IMAGE_DETAIL=low
+VISION_MAX_IMAGES=4
+```
+
+Damit bleibt die Analyse bewusst token- und kostenarm. Für Pflichtmerkmale nutzt Open Inserto zusätzliche gezielte KI-Abfragen nur dann, wenn die Kategorie bekannt ist und noch eBay-relevante Angaben fehlen.
 
 ## eBay Modus
 
