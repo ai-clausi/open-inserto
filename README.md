@@ -49,7 +49,7 @@ Die Kategorieauswahl ist nicht hart im Code verdrahtet. Open Inserto nutzt eBay 
 
 Die Kategorie-Suche auf der Draft-Seite läuft asynchron. Wird keine passende Kategorie automatisch gewählt, bleibt der Draft bearbeitbar und die eBay-Angaben werden geöffnet, damit Kategorie und fehlende Merkmale direkt sichtbar sind.
 
-Nach Auswahl einer Kategorie lädt Open Inserto die Kategorie-Merkmale über eBay `get_item_aspects_for_category`. Pflichtmerkmale werden vor dem Vorbereiten oder Veröffentlichen geprüft.
+Nach Auswahl einer Kategorie lädt Open Inserto die Kategorie-Merkmale über eBay `get_item_aspects_for_category`. Pflichtmerkmale werden vor dem Vorbereiten oder Veröffentlichen geprüft. Zusätzlich priorisiert die App optionale Merkmale heuristisch und zeigt nur die relevantesten als KI-gestützte Vorschläge im Draft an.
 
 ## KI-Analyse
 
@@ -64,7 +64,7 @@ VISION_IMAGE_DETAIL=low
 VISION_MAX_IMAGES=4
 ```
 
-Damit bleibt die Analyse bewusst token- und kostenarm. Für Pflichtmerkmale nutzt Open Inserto zusätzliche gezielte KI-Abfragen nur dann, wenn die Kategorie bekannt ist und noch eBay-relevante Angaben fehlen.
+Damit bleibt die Analyse bewusst token- und kostenarm. Für Pflichtmerkmale und priorisierte optionale Merkmale nutzt Open Inserto zusätzliche gezielte KI-Abfragen nur dann, wenn die Kategorie bekannt ist und noch eBay-relevante Angaben fehlen. Automatisch gesetzte Merkmale werden intern mit Quelle und Confidence markiert.
 
 ## eBay Modus
 

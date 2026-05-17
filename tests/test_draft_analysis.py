@@ -18,6 +18,7 @@ from app.drafts.analysis import (
 from app.core.config import Settings
 from app.drafts.models import Draft, SourceImage, WorkflowStatus
 from app.drafts.vision import _extract_structured_output
+from app.marketplaces.ebay.taxonomy import get_optional_category_aspects
 
 
 class StubVisionClient:
@@ -451,3 +452,78 @@ def test_autofill_ebay_required_aspects_uses_existing_listing_data(tmp_path: Pat
         "Modellkompatibilität": "SoundTouch 10",
         "Produktart": "Lautsprecher",
     }
+
+
+def test_get_optional_category_aspects_prioritizes_relevant_fields():
+    draft = Draft(
+        id="draft_optional_priority",
+        sku="OIN-OPTIONAL",
+        listing={
+            "title": "Bose SoundTouch 10 Lautsprecher schwarz",
+            "brand": "Bose",
+            "model": "SoundTouch 10",
+            "attributes": {
+                "keyTechnicalDetails": ["Konnektivität: WLAN, Bluetooth"],
+                "ebayCategory": {
+                    "selected_name": "Lautsprecher & Subwoofer",
+                    "selected_path": "TV, Video & Audio > Heim-Audio & HiFi > Lautsprecher & Subwoofer",
+                    "aspects": [
+                        {"name": "Farbe", "required": False, "values": ["Schwarz", "Weiß"]},
+                        {"name": "Konnektivität", "required": False, "values": ["Bluetooth", "WLAN"]},
+                        {"name": "Gewicht", "required": False, "values": []},
+                    ],
+                }
+            },
+        },
+    )
+
+    aspects = get_optional_category_aspects(draft)
+
+    assert [aspect["name"] for aspect in aspects] == ["Farbe", "Konnektivität", "Gewicht"]
+    assert aspects[0]["priority"] == "high"
+    assert aspects[1]["priority"] == "high"
+    assert aspects[2]["priority"] == "medium"
+
+
+def test_autofill_ebay_required_aspects_adds_prioritized_optional_fields(tmp_path: Path):
+    settings = Settings(
+        project_dir=tmp_path,
+        data_dir=tmp_path / "data",
+        database_url=f"sqlite:///{tmp_path / 'open_inserto.db'}",
+        draft_analysis_backend="heuristic",
+        _env_file=None,
+    )
+    draft = Draft(
+        id="draft_optional_fill",
+        sku="OIN-OPTIONAL-FILL",
+        listing={
+            "title": "Bose SoundTouch 10 Lautsprecher schwarz mit Bluetooth",
+            "brand": "Bose",
+            "model": "SoundTouch 10",
+            "categorySuggestion": "14990",
+            "attributes": {
+                "ebayCategory": {
+                    "state": "manual_id",
+                    "selected_id": "14990",
+                    "selected_name": "Lautsprecher & Subwoofer",
+                    "selected_path": "TV, Video & Audio > Heim-Audio & HiFi > Lautsprecher & Subwoofer",
+                    "aspects": [
+                        {"name": "Marke", "required": True, "values": []},
+                        {"name": "Farbe", "required": False, "values": ["Schwarz", "Weiß"]},
+                        {"name": "Konnektivität", "required": False, "values": ["Bluetooth", "WLAN"]},
+                    ],
+                }
+            },
+        },
+    )
+
+    changed = autofill_ebay_required_aspects(draft, settings)
+
+    assert changed is True
+    assert draft.listing.attributes["ebayAspects"] == {
+        "Marke": "Bose",
+        "Farbe": "Schwarz",
+        "Konnektivität": "Bluetooth",
+    }
+    assert draft.listing.attributes["ebayAspectsMeta"]["Farbe"]["source"] == "deterministic"
+    assert draft.listing.attributes["ebayAspectsMeta"]["Konnektivität"]["priority"] == "high"

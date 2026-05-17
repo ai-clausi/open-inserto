@@ -204,6 +204,77 @@ def get_required_category_aspects(draft: Draft) -> list[dict[str, Any]]:
     ]
 
 
+def get_optional_category_aspects(draft: Draft) -> list[dict[str, Any]]:
+    aspects = _category_metadata(draft).get("aspects")
+    if not isinstance(aspects, list):
+        return []
+
+    ranked: list[dict[str, Any]] = []
+    for item in aspects:
+        if not isinstance(item, dict) or item.get("required"):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        enriched = dict(item)
+        enriched["priority"] = _optional_aspect_priority(draft, enriched)
+        ranked.append(enriched)
+
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    ranked.sort(key=lambda item: (priority_order.get(str(item.get("priority") or "low"), 3), str(item.get("name") or "").casefold()))
+    return ranked
+
+
+def _optional_aspect_priority(draft: Draft, aspect: dict[str, Any]) -> str:
+    name = str(aspect.get("name") or "").strip().casefold()
+    if not name:
+        return "low"
+
+    context = " ".join(
+        part.casefold()
+        for part in (
+            draft.listing.title,
+            draft.listing.brand,
+            draft.listing.model,
+            str(_category_metadata(draft).get("selected_name") or ""),
+            str(_category_metadata(draft).get("selected_path") or ""),
+            " ".join(_detail_labels(draft)),
+        )
+        if isinstance(part, str) and part.strip()
+    )
+
+    if name in {
+        "marke", "modell", "produktart", "typ", "farbe", "größe", "material", "breite", "höhe", "länge",
+        "tiefe", "speicherkapazität", "konnektivität", "anschlüsse", "kompatibilität", "markenkompatibilität",
+        "modellkompatibilität", "bildschirmgröße", "produktlinie", "formfaktor",
+    }:
+        return "high"
+    if any(token in name for token in {"kompat", "größe", "farbe", "material", "anschluss", "kapaz", "modell", "marke"}):
+        return "high"
+    if any(token in name for token in {"breite", "höhe", "länge", "tiefe", "gewicht", "format", "leistung", "spannung", "energie", "durchmesser"}):
+        return "medium"
+    if context and any(token in context for token in {"lautsprecher", "audio", "tv", "monitor", "konsole", "kleidung", "möbel"}):
+        if any(token in name for token in {"farbe", "größe", "material", "konnektivität", "anschlüsse", "modell", "marke"}):
+            return "high"
+        if any(token in name for token in {"breite", "höhe", "länge", "tiefe", "gewicht"}):
+            return "medium"
+    return "low"
+
+
+def _detail_labels(draft: Draft) -> list[str]:
+    raw_details = draft.listing.attributes.get("keyTechnicalDetails")
+    if not isinstance(raw_details, list):
+        return []
+    labels: list[str] = []
+    for item in raw_details:
+        if not isinstance(item, str):
+            continue
+        label = item.split(":", 1)[0].strip()
+        if label:
+            labels.append(label)
+    return labels
+
+
 def _category_metadata(draft: Draft) -> dict[str, Any]:
     metadata = draft.listing.attributes.get("ebayCategory")
     return metadata if isinstance(metadata, dict) else {}

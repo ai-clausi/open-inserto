@@ -286,6 +286,38 @@
           <p class="field-help">Diese Merkmale kommen direkt aus der gewählten eBay-Kategorie und werden beim Veröffentlichen übertragen.</p>
         </div>
       {% endif %}
+      {% if optional_category_aspects %}
+        <div class="field field--full">
+          <span>Empfohlene optionale eBay-Merkmale</span>
+          <div class="category-aspect-list">
+            {% for aspect in optional_category_aspects if aspect.get('priority') in ['high', 'medium'] %}
+              {% set aspect_name = aspect.get('name') %}
+              {% set aspect_options = aspect.get('values', []) %}
+              {% set aspect_meta = ebay_aspect_metadata.get(aspect_name, {}) %}
+              <label class="field" for="ebay_optional_aspect_{{ loop.index }}">
+                <span>
+                  {{ aspect_name }}
+                  <small>
+                    {{ 'hoch priorisiert' if aspect.get('priority') == 'high' else 'sinnvoll bei guten Daten' }}
+                    {% if aspect_meta.get('source') == 'ai' %} · KI-Vorschlag{% elif aspect_meta.get('source') == 'deterministic' %} · automatisch erkannt{% endif %}
+                  </small>
+                </span>
+                {% if aspect_options %}
+                  <select id="ebay_optional_aspect_{{ loop.index }}" name="ebay_aspect__{{ aspect_name }}">
+                    <option value="">Optional auswählen</option>
+                    {% for value in aspect_options %}
+                      <option value="{{ value }}" {% if ebay_aspect_values.get(aspect_name) == value %}selected{% endif %}>{{ value }}</option>
+                    {% endfor %}
+                  </select>
+                {% else %}
+                  <input id="ebay_optional_aspect_{{ loop.index }}" name="ebay_aspect__{{ aspect_name }}" type="text" value="{{ ebay_aspect_values.get(aspect_name, '') }}" placeholder="{{ aspect_name }}">
+                {% endif %}
+              </label>
+            {% endfor %}
+          </div>
+          <p class="field-help">Open Inserto schlägt nur priorisierte optionale Merkmale vor. Unsichere Felder bleiben leer.</p>
+        </div>
+      {% endif %}
     </details>
 
     <div class="button-row">

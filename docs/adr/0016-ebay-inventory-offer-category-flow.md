@@ -57,6 +57,8 @@ Die manuelle Kategorie-Suche auf der Draft-Seite läuft asynchron. Die Seite sol
 
 Nach Auswahl oder Auflösung einer Kategorie lädt Open Inserto die kategoriespezifischen Artikelmerkmale über `get_item_aspects_for_category`.
 
+Pflichtmerkmale werden weiterhin strikt validiert. Optionale Merkmale werden zusätzlich heuristisch priorisiert, damit nur fachlich relevante Kandidaten automatisch vorgeschlagen oder per Vision-Modell nachermittelt werden. Die Speicherung von `ebayAspects` bleibt breit genug, damit sowohl Pflicht- als auch priorisierte optionale Felder ohne weiteres Spezialmapping in den eBay-Inventory-Payload laufen.
+
 Pflichtmerkmale werden vor dem eBay-Schritt geprüft. Fehlende Pflichtmerkmale blockieren das Vorbereiten oder Veröffentlichen, bis sie vorhanden sind.
 
 Open Inserto versucht Pflichtmerkmale automatisch zu füllen:

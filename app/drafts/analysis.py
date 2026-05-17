@@ -15,7 +15,7 @@ from app.drafts.included_items import normalize_included_items
 from app.drafts.models import Draft, ListingData
 from app.drafts.rendering import render_listing_description
 from app.drafts.vision import OpenAIVisionAnalyzerClient
-from app.marketplaces.ebay.taxonomy import get_category_resolution, get_required_category_aspects
+from app.marketplaces.ebay.taxonomy import get_category_resolution, get_optional_category_aspects, get_required_category_aspects
 
 logger = logging.getLogger(__name__)
 
@@ -211,22 +211,24 @@ class VisionDraftAnalysisService:
 
 def autofill_ebay_required_aspects(draft: Draft, settings: Settings) -> bool:
     required_aspects = get_required_category_aspects(draft)
-    if not required_aspects:
+    optional_aspects = [aspect for aspect in get_optional_category_aspects(draft) if str(aspect.get("priority") or "") in {"high", "medium"}][:6]
+    candidate_aspects = [*required_aspects, *optional_aspects]
+    if not candidate_aspects:
         return False
 
     existing = _ebay_aspect_values(draft)
     updated = dict(existing)
     changed = False
-    for aspect in required_aspects:
+    for aspect in candidate_aspects:
         name = _clean_text(aspect.get("name"))
         if not name or updated.get(name):
             continue
-        value = _infer_required_aspect_value(draft, aspect)
+        value = _infer_aspect_value(draft, aspect)
         if value:
             updated[name] = value
             changed = True
 
-    missing = [aspect for aspect in required_aspects if not updated.get(_clean_text(aspect.get("name")))]
+    missing = [aspect for aspect in candidate_aspects if not updated.get(_clean_text(aspect.get("name")))]
     category_id = str(get_category_resolution(draft).get("selected_id") or draft.listing.category_suggestion or "").strip()
     autofill_metadata = draft.listing.attributes.get("ebayAspectsAutofill")
     autofill_metadata = autofill_metadata if isinstance(autofill_metadata, dict) else {}
@@ -251,9 +253,10 @@ def autofill_ebay_required_aspects(draft: Draft, settings: Settings) -> bool:
                 user_input=draft.source.user_input,
                 listing=_listing_context(draft),
                 category=get_category_resolution(draft),
-                required_aspects=missing,
+                candidate_aspects=missing,
                 image_payloads=vision_service._build_image_payloads(draft),
             )
+            aspect_metadata = _ebay_aspect_metadata(draft)
             for item in ai_aspects:
                 name = _clean_text(item.get("name"))
                 if not name or updated.get(name):
@@ -264,11 +267,34 @@ def autofill_ebay_required_aspects(draft: Draft, settings: Settings) -> bool:
                 value = _normalize_aspect_value(item.get("value"), aspect)
                 if value:
                     updated[name] = value
+                    aspect_metadata[name] = {
+                        "source": "ai",
+                        "confidence": _clean_text(item.get("confidence")).lower() or "medium",
+                        "priority": str(aspect.get("priority") or ("high" if aspect.get("required") else "medium")),
+                    }
                     changed = True
+            if aspect_metadata:
+                draft.listing.attributes["ebayAspectsMeta"] = aspect_metadata
         except Exception as exc:
             logger.warning("OpenAI eBay aspect autofill failed for draft %s: %s", draft.id, exc)
 
     if changed:
+        aspect_metadata = _ebay_aspect_metadata(draft)
+        for aspect in candidate_aspects:
+            name = _clean_text(aspect.get("name"))
+            if not name or not updated.get(name):
+                continue
+            aspect_metadata.setdefault(
+                name,
+                {
+                    "source": "deterministic",
+                    "confidence": "high",
+                    "priority": str(aspect.get("priority") or ("high" if aspect.get("required") else "medium")),
+                },
+            )
+        if aspect_metadata:
+            draft.listing.attributes["ebayAspectsMeta"] = aspect_metadata
+
         draft.listing.attributes["ebayAspects"] = updated
         sources = draft.listing.attributes.get("fieldSources")
         if isinstance(sources, dict):
@@ -407,7 +433,20 @@ def _ebay_aspect_values(draft: Draft) -> dict[str, str]:
     return {str(key).strip(): str(value).strip() for key, value in values.items() if str(key).strip() and str(value).strip()}
 
 
-def _infer_required_aspect_value(draft: Draft, aspect: dict[str, Any]) -> str:
+def _ebay_aspect_metadata(draft: Draft) -> dict[str, dict[str, str]]:
+    raw_value = draft.listing.attributes.get("ebayAspectsMeta")
+    if not isinstance(raw_value, dict):
+        return {}
+    metadata: dict[str, dict[str, str]] = {}
+    for key, value in raw_value.items():
+        name = str(key).strip()
+        if not name or not isinstance(value, dict):
+            continue
+        metadata[name] = {str(inner_key).strip(): str(inner_value).strip() for inner_key, inner_value in value.items() if str(inner_key).strip() and str(inner_value).strip()}
+    return metadata
+
+
+def _infer_aspect_value(draft: Draft, aspect: dict[str, Any]) -> str:
     name = _clean_text(aspect.get("name"))
     name_key = name.casefold()
     if name_key in {"marke", "markenkompatibilität", "kompatible marke"}:
@@ -420,6 +459,8 @@ def _infer_required_aspect_value(draft: Draft, aspect: dict[str, Any]) -> str:
             return value
         category = get_category_resolution(draft)
         return _normalize_aspect_value(category.get("selected_name"), aspect)
+    if name_key in {"farbe", "colour", "color"}:
+        return _match_allowed_value(_product_context_text(draft), aspect)
     return _match_allowed_value(_product_context_text(draft), aspect)
 
 
