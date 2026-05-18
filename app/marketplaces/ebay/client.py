@@ -40,7 +40,7 @@ class EbayOfferAlreadyExistsError(EbayValidationError):
     offer_id: str
 
     def __init__(self, offer_id: str, message: str):
-        super().__init__(message)
+        EbayValidationError.__init__(self, message)
         self.offer_id = offer_id
 
 

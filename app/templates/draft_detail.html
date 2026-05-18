@@ -5,6 +5,38 @@
   <span class="field-source field-source--{{ 'ai' if source == 'KI' else 'edited' if source == 'Bearbeitet' else 'user' }}">{{ source }}</span>
 {%- endmacro %}
 
+{% macro aspect_value_select(control_id, aspect_name, aspect_options, current_value, empty_label) -%}
+  <div class="searchable-select" data-searchable-select>
+    <select id="{{ control_id }}" name="ebay_aspect__{{ aspect_name }}" class="js-searchable-select">
+      <option value="">{{ empty_label }}</option>
+      {% for value in aspect_options %}
+        <option value="{{ value }}" {% if current_value == value %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+    <button
+      class="searchable-select__button"
+      type="button"
+      aria-haspopup="listbox"
+      aria-expanded="false"
+      data-searchable-select-button
+    >
+      <span data-searchable-select-label>{{ current_value or empty_label }}</span>
+    </button>
+    <div class="searchable-select__panel" data-searchable-select-panel hidden>
+      <input
+        class="searchable-select__search"
+        type="search"
+        autocomplete="off"
+        placeholder="Wert suchen"
+        aria-label="{{ aspect_name }} suchen"
+        data-searchable-select-search
+      >
+      <div class="searchable-select__options" role="listbox" data-searchable-select-options></div>
+      <p class="searchable-select__empty" data-searchable-select-empty hidden>Kein passender Wert</p>
+    </div>
+  </div>
+{%- endmacro %}
+
 {% block title %}{{ app_name }} - Draft {{ draft.id }}{% endblock %}
 
 {% block content %}
@@ -271,12 +303,7 @@
               <label class="field" for="ebay_aspect_{{ loop.index }}">
                 <span>{{ aspect_name }}</span>
                 {% if aspect_options %}
-                  <select id="ebay_aspect_{{ loop.index }}" name="ebay_aspect__{{ aspect_name }}">
-                    <option value="">Bitte auswählen</option>
-                    {% for value in aspect_options %}
-                      <option value="{{ value }}" {% if ebay_aspect_values.get(aspect_name) == value %}selected{% endif %}>{{ value }}</option>
-                    {% endfor %}
-                  </select>
+                  {{ aspect_value_select('ebay_aspect_' ~ loop.index, aspect_name, aspect_options, ebay_aspect_values.get(aspect_name), 'Bitte auswählen') }}
                 {% else %}
                   <input id="ebay_aspect_{{ loop.index }}" name="ebay_aspect__{{ aspect_name }}" type="text" value="{{ ebay_aspect_values.get(aspect_name, '') }}" placeholder="{{ aspect_name }}">
                 {% endif %}
@@ -284,6 +311,33 @@
             {% endfor %}
           </div>
           <p class="field-help">Diese Merkmale kommen direkt aus der gewählten eBay-Kategorie und werden beim Veröffentlichen übertragen.</p>
+        </div>
+      {% endif %}
+      {% if optional_category_aspects %}
+        <div class="field field--full">
+          <span>Empfohlene optionale eBay-Merkmale</span>
+          <div class="category-aspect-list">
+            {% for aspect in optional_category_aspects if aspect.get('priority') in ['high', 'medium'] %}
+              {% set aspect_name = aspect.get('name') %}
+              {% set aspect_options = aspect.get('values', []) %}
+              {% set aspect_meta = ebay_aspect_metadata.get(aspect_name, {}) %}
+              <label class="field" for="ebay_optional_aspect_{{ loop.index }}">
+                <span>
+                  {{ aspect_name }}
+                  <small>
+                    {{ 'hoch priorisiert' if aspect.get('priority') == 'high' else 'sinnvoll bei guten Daten' }}
+                    {% if aspect_meta.get('source') == 'ai' %} · KI-Vorschlag{% elif aspect_meta.get('source') == 'deterministic' %} · automatisch erkannt{% endif %}
+                  </small>
+                </span>
+                {% if aspect_options %}
+                  {{ aspect_value_select('ebay_optional_aspect_' ~ loop.index, aspect_name, aspect_options, ebay_aspect_values.get(aspect_name), 'Optional auswählen') }}
+                {% else %}
+                  <input id="ebay_optional_aspect_{{ loop.index }}" name="ebay_aspect__{{ aspect_name }}" type="text" value="{{ ebay_aspect_values.get(aspect_name, '') }}" placeholder="{{ aspect_name }}">
+                {% endif %}
+              </label>
+            {% endfor %}
+          </div>
+          <p class="field-help">Open Inserto schlägt nur priorisierte optionale Merkmale vor. Unsichere Felder bleiben leer.</p>
         </div>
       {% endif %}
     </details>
@@ -437,6 +491,114 @@
   const categorySearchResults = document.querySelector("#category_search_results");
   const categorySuggestionInput = document.querySelector("#category_suggestion");
 
+  function initializeSearchableSelects(root = document) {
+    root.querySelectorAll("[data-searchable-select]").forEach((container) => {
+      if (container.dataset.enhanced === "true") {
+        return;
+      }
+      const select = container.querySelector(".js-searchable-select");
+      const button = container.querySelector("[data-searchable-select-button]");
+      const label = container.querySelector("[data-searchable-select-label]");
+      const panel = container.querySelector("[data-searchable-select-panel]");
+      const search = container.querySelector("[data-searchable-select-search]");
+      const optionsList = container.querySelector("[data-searchable-select-options]");
+      const emptyState = container.querySelector("[data-searchable-select-empty]");
+      if (!select || !button || !label || !panel || !search || !optionsList || !emptyState) {
+        return;
+      }
+
+      container.dataset.enhanced = "true";
+      container.classList.add("searchable-select--enhanced");
+
+      const options = Array.from(select.options).map((option) => ({
+        value: option.value,
+        label: option.textContent.trim(),
+      }));
+
+      function currentOption() {
+        return options.find((option) => option.value === select.value) || options[0];
+      }
+
+      function updateLabel() {
+        const option = currentOption();
+        label.textContent = option ? option.label : "";
+      }
+
+      function closePanel() {
+        panel.hidden = true;
+        button.setAttribute("aria-expanded", "false");
+      }
+
+      function openPanel() {
+        panel.hidden = false;
+        button.setAttribute("aria-expanded", "true");
+        search.value = "";
+        renderOptions("");
+        window.requestAnimationFrame(() => search.focus());
+      }
+
+      function selectValue(value) {
+        select.value = value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        updateLabel();
+        closePanel();
+        button.focus();
+      }
+
+      function renderOptions(query) {
+        const normalizedQuery = query.trim().toLocaleLowerCase();
+        optionsList.innerHTML = "";
+        let visibleCount = 0;
+        options.forEach((option) => {
+          if (normalizedQuery && !option.label.toLocaleLowerCase().includes(normalizedQuery)) {
+            return;
+          }
+          visibleCount += 1;
+          const optionButton = document.createElement("button");
+          optionButton.type = "button";
+          optionButton.className = "searchable-select__option";
+          optionButton.dataset.value = option.value;
+          optionButton.setAttribute("role", "option");
+          optionButton.setAttribute("aria-selected", option.value === select.value ? "true" : "false");
+          optionButton.textContent = option.label;
+          optionButton.addEventListener("click", () => selectValue(option.value));
+          optionsList.append(optionButton);
+        });
+        emptyState.hidden = visibleCount > 0;
+      }
+
+      button.addEventListener("click", () => {
+        if (panel.hidden) {
+          openPanel();
+        } else {
+          closePanel();
+        }
+      });
+      search.addEventListener("input", () => renderOptions(search.value));
+      search.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          closePanel();
+          button.focus();
+          return;
+        }
+        if (event.key === "Enter") {
+          const firstOption = optionsList.querySelector(".searchable-select__option");
+          if (firstOption) {
+            event.preventDefault();
+            selectValue(firstOption.dataset.value || "");
+          }
+        }
+      });
+      select.addEventListener("change", updateLabel);
+      document.addEventListener("click", (event) => {
+        if (!container.contains(event.target)) {
+          closePanel();
+        }
+      });
+      updateLabel();
+    });
+  }
+
   function escapeHtml(value) {
     return String(value || "")
       .replace(/&/g, "&amp;")
@@ -507,5 +669,7 @@
       }
     });
   }
+
+  initializeSearchableSelects();
 </script>
 {% endblock %}

@@ -149,12 +149,12 @@ class OpenAIVisionAnalyzerClient:
         user_input: dict[str, Any],
         listing: dict[str, Any],
         category: dict[str, Any],
-        required_aspects: list[dict[str, Any]],
+        candidate_aspects: list[dict[str, Any]],
         image_payloads: list[dict[str, str]],
     ) -> list[dict[str, str]]:
         if not self.api_key:
             raise ValueError("Vision API key fehlt")
-        if not required_aspects:
+        if not candidate_aspects:
             return []
 
         response_format = {
@@ -183,7 +183,7 @@ class OpenAIVisionAnalyzerClient:
             },
         }
         prompt = (
-            "Fülle nur die angefragten eBay-Kategoriepflichtmerkmale für den Verkaufsentwurf. "
+            "Fülle nur die angefragten eBay-Kategoriemerkmale für den Verkaufsentwurf. Pflichtmerkmale haben Vorrang, optionale Merkmale nur wenn sie relevant und gut belegbar sind. "
             "Nutze vorhandene Entwurfsdaten, Nutzerangaben und sichtbare Bildinhalte. "
             "Erfinde keine Werte. Wenn ein Wert nicht sicher aus Titel, Marke, Modell, Nutzerangaben oder Bildern ableitbar ist, "
             "gib für dieses Merkmal einen leeren value zurück. "
@@ -192,7 +192,7 @@ class OpenAIVisionAnalyzerClient:
             "Für Modellkompatibilität darf das erkannte Modell verwendet werden, wenn es um Zubehör, Ersatzteile oder Kompatibilität geht. "
             "Für Produktart verwende eine kurze sachliche Produktart, möglichst aus allowedValues oder der eBay-Kategorie. "
             f"notes={notes!r}; user_input={user_input!r}; listing={listing!r}; category={category!r}; "
-            f"required_aspects={required_aspects!r}"
+            f"candidate_aspects={candidate_aspects!r}"
         )
         content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
         for image_payload in image_payloads:
@@ -222,7 +222,7 @@ class OpenAIVisionAnalyzerClient:
                     "OpenAI eBay aspect request failed: status=%s model=%s aspect_count=%s body=%s",
                     response.status_code,
                     self.model,
-                    len(required_aspects),
+                    len(candidate_aspects),
                     _truncate_for_log(response.text),
                 )
             response.raise_for_status()

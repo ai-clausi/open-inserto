@@ -29,7 +29,7 @@ from app.marketplaces.ebay.service import EbayMarketplaceService
 from app.marketplaces.ebay.auth import EbayAuthStore, build_auth_connect_url, has_usable_auth_tokens
 from app.marketplaces.ebay.client import EbayApiError, EbayAuthError, EbayClient, EbayValidationError, normalize_search_text
 from app.marketplaces.ebay.configuration import DEFAULT_SHIPPING_PROFILE, PAYMENT_POLICY_NAME, RETURN_POLICY_NAME, SHIPPING_PROFILES, EbayConfigStore, normalize_shipping_profile
-from app.marketplaces.ebay.taxonomy import get_category_resolution, get_required_category_aspects, resolve_category_search_for_draft, resolve_category_suggestion_for_draft
+from app.marketplaces.ebay.taxonomy import get_category_resolution, get_optional_category_aspects, get_required_category_aspects, resolve_category_search_for_draft, resolve_category_suggestion_for_draft
 from app.marketplaces.ebay.validation import collect_marketplace_notes, collect_marketplace_readiness_errors
 
 router = APIRouter()
@@ -161,6 +161,19 @@ def get_ebay_aspect_values(draft) -> dict[str, str]:
     if not isinstance(values, dict):
         return {}
     return {str(key): str(value) for key, value in values.items()}
+
+
+def get_ebay_aspect_metadata(draft) -> dict[str, dict[str, str]]:
+    values = draft.listing.attributes.get("ebayAspectsMeta")
+    if not isinstance(values, dict):
+        return {}
+    metadata: dict[str, dict[str, str]] = {}
+    for key, value in values.items():
+        name = str(key).strip()
+        if not name or not isinstance(value, dict):
+            continue
+        metadata[name] = {str(inner_key): str(inner_value) for inner_key, inner_value in value.items()}
+    return metadata
 
 
 def update_ebay_aspects_from_form(draft, form: Any) -> None:
@@ -523,6 +536,7 @@ def draft_detail(request: Request, draft_id: str):
     )
     category_resolution = get_category_resolution(draft)
     required_category_aspects = get_required_category_aspects(draft)
+    optional_category_aspects = get_optional_category_aspects(draft)
 
     return templates.TemplateResponse(
         request,
@@ -538,7 +552,9 @@ def draft_detail(request: Request, draft_id: str):
             analysis_state=get_analysis_state(draft),
             category_resolution=category_resolution,
             required_category_aspects=required_category_aspects,
+            optional_category_aspects=optional_category_aspects,
             ebay_aspect_values=get_ebay_aspect_values(draft),
+            ebay_aspect_metadata=get_ebay_aspect_metadata(draft),
             open_ebay_details=should_open_ebay_details(category_resolution, required_category_aspects, marketplace_readiness_errors),
             review_form_values=get_review_form_values(draft),
             review_metadata=get_review_metadata(draft),
