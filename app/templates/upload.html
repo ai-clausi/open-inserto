@@ -5,92 +5,29 @@
 {% block content %}
 <section class="mx-auto flex max-w-4xl flex-col py-0 sm:py-8">
   <div class="overflow-hidden bg-transparent sm:rounded-[2rem] sm:border sm:border-slate-200 sm:bg-white sm:shadow-soft">
-    <div class="space-y-4 bg-gradient-to-b from-slate-100 via-slate-50 to-white px-0 py-4 sm:px-6 sm:py-6">
-      <div class="space-y-4" data-chat-sequence>
-        <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm bg-slate-950 px-5 py-4 text-white shadow-soft opacity-0 transition duration-500 data-[visible=true]:opacity-100" data-chat-step>
-          <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-lg">✨</div>
-            <div>
-              <strong class="block text-sm font-semibold text-emerald-200">Open Inserto</strong>
-              <p class="text-xs text-slate-400">schreibt gerade</p>
-            </div>
-          </div>
-          <div class="mt-3 flex items-center gap-2 text-emerald-200" data-typing-indicator>
-            <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce [animation-delay:-0.3s]"></span>
-            <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce [animation-delay:-0.15s]"></span>
-            <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce"></span>
-          </div>
-          <p class="mt-3 hidden text-sm leading-6 text-slate-100" data-chat-text>Hi, lade zuerst deine Bilder hoch. Ich speichere sie erst einmal intern und gehe danach mit dir Schritt für Schritt durch die nächsten Infos.</p>
-        </article>
-
-        {% if errors %}
-          <div class="max-w-[92%] rounded-[1.5rem] rounded-tl-sm border border-rose-200 bg-rose-50 px-5 py-4 text-rose-900 shadow-sm">
-            <strong class="block text-sm font-semibold">Upload fehlgeschlagen.</strong>
-            <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
-              {% for error in errors %}
-                <li>{{ error }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-        {% endif %}
-
-        <form class="space-y-4" method="post" action="/drafts/upload" enctype="multipart/form-data" data-assistant-upload-form>
-          <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm border border-slate-200 bg-white px-5 py-5 shadow-sm opacity-0 transition duration-500 data-[visible=true]:opacity-100" data-chat-step>
-            <strong class="block text-sm font-semibold text-slate-900">Open Inserto</strong>
-            <p class="mt-2 text-sm leading-6 text-slate-600">Schick mir jetzt die Fotos. Wichtig: Die Bilder werden hier erst einmal nur hochgeladen, noch nicht direkt analysiert.</p>
-
-            <label class="group mt-4 block rounded-[1.5rem] border border-dashed border-emerald-300 bg-emerald-50/70 p-6 transition hover:border-emerald-500 hover:bg-emerald-50" data-dropzone>
-              <input class="sr-only" type="file" name="images" accept="image/*,.heic,.heif" multiple required data-image-input>
-              <div class="flex flex-col items-center justify-center gap-3 text-center">
-                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-emerald-100">📸</div>
-                <div>
-                  <p class="text-base font-semibold text-slate-900">Bilder hochladen</p>
-                  <p class="mt-1 text-sm text-slate-600">Oder Bilder einfach hier hineinziehen</p>
-                </div>
-                <div class="flex flex-wrap justify-center gap-2 text-xs text-slate-500">
-                  <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Mindestens 1 Bild</span>
-                  <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Maximal 20 Bilder</span>
-                  <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Mindestens 500 px</span>
-                </div>
-              </div>
-            </label>
-
-            <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-preview-grid>
-              <p class="col-span-full rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">Noch keine Bilder ausgewählt.</p>
-            </div>
-          </article>
-
-          <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm bg-slate-950 px-5 py-5 text-white shadow-soft opacity-0 transition duration-500 data-[visible=true]:opacity-100" data-chat-step>
-            <strong class="block text-sm font-semibold text-emerald-200">Open Inserto</strong>
-            <p class="mt-2 text-sm leading-6 text-slate-100">Wenn du magst, gib mir direkt noch ein paar Hinweise mit. Das spart später Rückfragen.</p>
-          </article>
-
-          <article class="ml-auto max-w-[92%] rounded-[1.75rem] rounded-tr-sm border border-emerald-100 bg-emerald-400 px-5 py-5 text-emerald-950 shadow-sm opacity-0 transition duration-500 data-[visible=true]:opacity-100" data-chat-step>
-            <strong class="block text-sm font-semibold">Du</strong>
-
-            <div class="mt-4 grid gap-4">
-              <label class="block">
-                <span class="mb-2 block text-sm font-medium">Was soll ich über den Artikel schon wissen?</span>
-                <textarea class="min-h-28 w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" name="notes" rows="5" placeholder="Zustand, Auffälligkeiten, Preisidee, Fundort ...">{{ form_values.notes or '' }}</textarea>
-              </label>
-
-              <div class="grid gap-4 md:grid-cols-2">
-                {% for field_name, field_label in extra_fields %}
-                  <label class="block">
-                    <span class="mb-2 block text-sm font-medium">{{ field_label }}</span>
-                    <input class="w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" type="text" name="{{ field_name }}" value="{{ form_values[field_name] if field_name in form_values else '' }}" placeholder="{{ field_label }}">
-                  </label>
-                {% endfor %}
-              </div>
-
-              <div class="flex flex-wrap items-center justify-end gap-3">
-                <span class="text-sm text-emerald-900/80">Antwort wird zusammen mit deinen Bildern gesendet.</span>
-                <button class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-950/30" type="submit" data-submit-button>Bilder senden</button>
-              </div>
-            </div>
-          </article>
-        </form>
+    <div class="bg-gradient-to-b from-slate-100 via-slate-50 to-white px-0 py-4 sm:px-6 sm:py-6">
+      <div class="flex min-h-[70vh] flex-col rounded-none bg-transparent sm:min-h-[42rem] sm:rounded-[1.75rem] sm:bg-white/70 sm:ring-1 sm:ring-slate-200/70">
+        <div class="flex-1 space-y-4 overflow-y-auto px-0 pb-6 pt-2 sm:px-6" data-chat-thread></div>
       </div>
+
+      {% if errors %}
+        <div class="mt-4 rounded-[1.5rem] border border-rose-200 bg-rose-50 px-5 py-4 text-rose-900 shadow-sm">
+          <strong class="block text-sm font-semibold">Upload fehlgeschlagen.</strong>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+            {% for error in errors %}
+              <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <form class="hidden" method="post" action="/drafts/upload" enctype="multipart/form-data" data-assistant-upload-form>
+        <input type="file" name="images" accept="image/*,.heic,.heif" multiple required data-image-input>
+        <textarea name="notes" data-notes-input>{{ form_values.notes or '' }}</textarea>
+        {% for field_name, field_label in extra_fields %}
+          <input type="text" name="{{ field_name }}" value="{{ form_values[field_name] if field_name in form_values else '' }}" data-extra-input="{{ field_name }}">
+        {% endfor %}
+      </form>
     </div>
   </div>
 
@@ -122,40 +59,148 @@
   </div>
 </section>
 
-<script>
-  const input = document.querySelector('[data-image-input]');
-  const previewGrid = document.querySelector('[data-preview-grid]');
-  const dropzone = document.querySelector('[data-dropzone]');
-  const uploadForm = document.querySelector('[data-assistant-upload-form]');
-  const analysisOverlay = document.querySelector('[data-analysis-overlay]');
-  const submitButton = document.querySelector('[data-submit-button]');
+<template id="assistant-message-template">
+  <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm bg-slate-950 px-5 py-4 text-white shadow-soft opacity-0 translate-y-4 transition duration-500">
+    <div class="flex items-center gap-3">
+      <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-lg">✨</div>
+      <div>
+        <strong class="block text-sm font-semibold text-emerald-200">Open Inserto</strong>
+        <p class="text-xs text-slate-400" data-status>schreibt gerade</p>
+      </div>
+    </div>
+    <div class="mt-3 flex items-center gap-2 text-emerald-200" data-typing-indicator>
+      <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce [animation-delay:-0.3s]"></span>
+      <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce [animation-delay:-0.15s]"></span>
+      <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce"></span>
+    </div>
+    <p class="mt-3 hidden text-sm leading-6 text-slate-100" data-chat-text></p>
+  </article>
+</template>
 
-  const revealChat = () => {
-    const steps = document.querySelectorAll('[data-chat-step]');
-    steps.forEach((step, index) => {
-      window.setTimeout(() => {
-        step.dataset.visible = 'true';
-        const typingIndicator = step.querySelector('[data-typing-indicator]');
-        const text = step.querySelector('[data-chat-text]');
-        if (typingIndicator && text) {
-          window.setTimeout(() => {
-            typingIndicator.classList.add('hidden');
-            text.classList.remove('hidden');
-          }, 900);
-        }
-      }, index * 260);
+<template id="user-message-template">
+  <article class="ml-auto max-w-[92%] rounded-[1.75rem] rounded-tr-sm border border-emerald-100 bg-emerald-400 px-5 py-4 text-emerald-950 shadow-sm opacity-0 translate-y-4 transition duration-500">
+    <strong class="block text-sm font-semibold">Du</strong>
+    <div class="mt-3 text-sm leading-6" data-user-content></div>
+  </article>
+</template>
+
+<template id="upload-card-template">
+  <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm border border-slate-200 bg-white px-5 py-5 shadow-sm opacity-0 translate-y-4 transition duration-500">
+    <strong class="block text-sm font-semibold text-slate-900">Open Inserto</strong>
+    <p class="mt-2 text-sm leading-6 text-slate-600">Schick mir jetzt die Fotos. Wichtig: Die Bilder werden hier erst einmal nur hochgeladen, noch nicht direkt analysiert.</p>
+
+    <label class="group mt-4 block cursor-pointer rounded-[1.5rem] border border-dashed border-emerald-300 bg-emerald-50/70 p-6 transition hover:border-emerald-500 hover:bg-emerald-50" data-dropzone>
+      <input class="sr-only" type="file" accept="image/*,.heic,.heif" multiple data-virtual-image-input>
+      <div class="flex flex-col items-center justify-center gap-3 text-center">
+        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-emerald-100">📸</div>
+        <div>
+          <p class="text-base font-semibold text-slate-900">Bilder hochladen</p>
+          <p class="mt-1 text-sm text-slate-600">Oder Bilder einfach hier hineinziehen</p>
+        </div>
+        <div class="flex flex-wrap justify-center gap-2 text-xs text-slate-500">
+          <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Mindestens 1 Bild</span>
+          <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Maximal 20 Bilder</span>
+          <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Mindestens 500 px</span>
+        </div>
+      </div>
+    </label>
+
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-preview-grid>
+      <p class="col-span-full rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">Noch keine Bilder ausgewählt.</p>
+    </div>
+  </article>
+</template>
+
+<template id="notes-composer-template">
+  <article class="ml-auto max-w-[92%] rounded-[1.75rem] rounded-tr-sm border border-emerald-100 bg-emerald-400 px-5 py-5 text-emerald-950 shadow-sm opacity-0 translate-y-4 transition duration-500">
+    <strong class="block text-sm font-semibold">Du</strong>
+
+    <div class="mt-4 grid gap-4">
+      <label class="block">
+        <span class="mb-2 block text-sm font-medium">Was soll ich über den Artikel schon wissen?</span>
+        <textarea class="min-h-28 w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" rows="5" placeholder="Zustand, Auffälligkeiten, Preisidee, Fundort ..." data-notes-field></textarea>
+      </label>
+
+      <div class="grid gap-4 md:grid-cols-2" data-extra-fields></div>
+
+      <div class="flex flex-wrap items-center justify-end gap-3">
+        <span class="text-sm text-emerald-900/80">Antwort wird zusammen mit deinen Bildern gesendet.</span>
+        <button class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-950/30" type="button" data-submit-button>Bilder senden</button>
+      </div>
+    </div>
+  </article>
+</template>
+
+<script>
+  const chatThread = document.querySelector('[data-chat-thread]');
+  const uploadForm = document.querySelector('[data-assistant-upload-form]');
+  const realInput = uploadForm?.querySelector('[data-image-input]');
+  const notesInput = uploadForm?.querySelector('[data-notes-input]');
+  const analysisOverlay = document.querySelector('[data-analysis-overlay]');
+  const extraFieldMeta = {{ extra_fields | tojson }};
+
+  let uploadStepMounted = false;
+  let notesStepMounted = false;
+
+  const syncFileInput = (files) => {
+    if (!realInput) return;
+    const transfer = new DataTransfer();
+    Array.from(files || []).forEach((file) => transfer.items.add(file));
+    realInput.files = transfer.files;
+  };
+
+  const scrollToBottom = (behavior = 'smooth') => {
+    window.requestAnimationFrame(() => {
+      chatThread?.lastElementChild?.scrollIntoView({ behavior, block: 'end' });
     });
   };
 
-  const renderPreviews = () => {
-    const files = Array.from(input.files || []);
-    if (!files.length) {
+  const revealNode = (node) => {
+    window.requestAnimationFrame(() => {
+      node.classList.remove('opacity-0', 'translate-y-4');
+      scrollToBottom();
+    });
+  };
+
+  const appendAssistantMessage = (text, delay = 900) => new Promise((resolve) => {
+    const template = document.getElementById('assistant-message-template');
+    const node = template.content.firstElementChild.cloneNode(true);
+    const status = node.querySelector('[data-status]');
+    const typing = node.querySelector('[data-typing-indicator]');
+    const body = node.querySelector('[data-chat-text]');
+
+    chatThread.appendChild(node);
+    revealNode(node);
+    scrollToBottom('auto');
+
+    window.setTimeout(() => {
+      typing.classList.add('hidden');
+      status.textContent = 'soeben gesendet';
+      body.textContent = text;
+      body.classList.remove('hidden');
+      scrollToBottom();
+      resolve(node);
+    }, delay);
+  });
+
+  const appendUserMessage = (html) => {
+    const template = document.getElementById('user-message-template');
+    const node = template.content.firstElementChild.cloneNode(true);
+    node.querySelector('[data-user-content]').innerHTML = html;
+    chatThread.appendChild(node);
+    revealNode(node);
+    return node;
+  };
+
+  const renderPreviews = (files, previewGrid) => {
+    const allFiles = Array.from(files || []);
+    if (!allFiles.length) {
       previewGrid.innerHTML = '<p class="col-span-full rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">Noch keine Bilder ausgewählt.</p>';
       return;
     }
 
     previewGrid.innerHTML = '';
-    files.forEach((file, index) => {
+    allFiles.forEach((file, index) => {
       const item = document.createElement('article');
       item.className = 'overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50 shadow-sm';
 
@@ -176,11 +221,11 @@
 
       const badge = document.createElement('span');
       badge.className = 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800';
-      badge.textContent = 'Hochgeladen';
+      badge.textContent = 'Ausgewählt';
       header.appendChild(badge);
       item.appendChild(header);
 
-      if (file.type.startsWith('image/')) {
+      if ((file.type || '').startsWith('image/')) {
         const img = document.createElement('img');
         img.alt = file.name;
         img.loading = 'lazy';
@@ -193,37 +238,106 @@
     });
   };
 
-  revealChat();
-  input?.addEventListener('change', renderPreviews);
+  const mountNotesComposer = async () => {
+    if (notesStepMounted) return;
+    notesStepMounted = true;
 
-  ['dragenter', 'dragover'].forEach((eventName) => {
-    dropzone?.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      dropzone.classList.add('border-emerald-500', 'bg-emerald-100');
+    await appendAssistantMessage('Perfekt, die Bilder sind vorgemerkt. Wenn du magst, gib mir direkt noch ein paar Hinweise mit. Das spart später Rückfragen.');
+
+    const template = document.getElementById('notes-composer-template');
+    const node = template.content.firstElementChild.cloneNode(true);
+    const notesField = node.querySelector('[data-notes-field]');
+    const extraFieldsWrap = node.querySelector('[data-extra-fields]');
+    const submitButton = node.querySelector('[data-submit-button]');
+
+    extraFieldMeta.forEach(([fieldName, fieldLabel]) => {
+      const label = document.createElement('label');
+      label.className = 'block';
+      label.innerHTML = `
+        <span class="mb-2 block text-sm font-medium">${fieldLabel}</span>
+        <input class="w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" type="text" placeholder="${fieldLabel}">
+      `;
+      const field = label.querySelector('input');
+      const backing = uploadForm?.querySelector(`[data-extra-input="${fieldName}"]`);
+      field.value = backing?.value || '';
+      field.addEventListener('input', () => {
+        if (backing) backing.value = field.value;
+      });
+      extraFieldsWrap.appendChild(label);
     });
-  });
 
-  ['dragleave', 'drop'].forEach((eventName) => {
-    dropzone?.addEventListener(eventName, (event) => {
-      event.preventDefault();
-      dropzone.classList.remove('border-emerald-500', 'bg-emerald-100');
+    notesField.value = notesInput?.value || '';
+    notesField.addEventListener('input', () => {
+      if (notesInput) notesInput.value = notesField.value;
     });
-  });
 
-  dropzone?.addEventListener('drop', (event) => {
-    const files = event.dataTransfer?.files;
-    if (!files?.length) return;
-    input.files = files;
-    renderPreviews();
-  });
-
-  uploadForm?.addEventListener('submit', () => {
-    analysisOverlay?.classList.remove('hidden');
-    analysisOverlay?.classList.add('flex');
-    if (submitButton) {
+    submitButton.addEventListener('click', () => {
+      analysisOverlay?.classList.remove('hidden');
+      analysisOverlay?.classList.add('flex');
       submitButton.disabled = true;
       submitButton.textContent = 'Analyse läuft ...';
-    }
-  });
+      uploadForm?.requestSubmit();
+    });
+
+    chatThread.appendChild(node);
+    revealNode(node);
+  };
+
+  const mountUploadCard = () => {
+    if (uploadStepMounted) return;
+    uploadStepMounted = true;
+
+    const template = document.getElementById('upload-card-template');
+    const node = template.content.firstElementChild.cloneNode(true);
+    const virtualInput = node.querySelector('[data-virtual-image-input]');
+    const previewGrid = node.querySelector('[data-preview-grid]');
+    const dropzone = node.querySelector('[data-dropzone]');
+
+    const handleFiles = async (files) => {
+      if (!files?.length) return;
+      syncFileInput(files);
+      renderPreviews(files, previewGrid);
+      appendUserMessage(`<p>${files.length} Bild${files.length === 1 ? '' : 'er'} ausgewählt und zum Upload bereit.</p>`);
+      await mountNotesComposer();
+    };
+
+    virtualInput?.addEventListener('change', (event) => {
+      const files = event.target.files;
+      handleFiles(files);
+    });
+
+    ['dragenter', 'dragover'].forEach((eventName) => {
+      dropzone?.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropzone.classList.add('border-emerald-500', 'bg-emerald-100');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach((eventName) => {
+      dropzone?.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropzone.classList.remove('border-emerald-500', 'bg-emerald-100');
+      });
+    });
+
+    dropzone?.addEventListener('drop', (event) => {
+      const files = event.dataTransfer?.files;
+      if (!files?.length || !virtualInput) return;
+      virtualInput.files = files;
+      handleFiles(files);
+    });
+
+    chatThread.appendChild(node);
+    revealNode(node);
+  };
+
+  const boot = async () => {
+    await appendAssistantMessage('Hi, lade zuerst deine Bilder hoch. Ich speichere sie erst einmal intern und gehe danach mit dir Schritt für Schritt durch die nächsten Infos.');
+    window.setTimeout(() => {
+      mountUploadCard();
+    }, 240);
+  };
+
+  boot();
 </script>
 {% endblock %}
