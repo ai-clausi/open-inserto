@@ -105,6 +105,41 @@
   </section>
 {% endif %}
 
+<section class="card assistant-workflow" id="assistant-flow" data-assistant-flow data-draft-id="{{ draft.id }}">
+  <div class="section-head section-head--compact">
+    <div>
+      <p class="eyebrow">Assistenten-Flow</p>
+      <h2>Chat-artige Rückfragen ohne Reload</h2>
+    </div>
+    <span class="status-chip status-chip--muted">Beta</span>
+  </div>
+  <p class="section-copy">Der Assistent bestätigt erkannte Angaben direkt im Verlauf und fragt fehlende Kerninfos schrittweise nach.</p>
+  <div class="assistant-thread" data-assistant-thread>
+    {% for message in assistant_flow.messages %}
+      <article class="assistant-bubble assistant-bubble--{{ 'user' if message.role == 'user' else 'assistant' }}{% if message.tone == 'confirmed' %} assistant-bubble--confirmed{% endif %}">
+        <strong>{{ 'Du' if message.role == 'user' else 'Open Inserto' }}</strong>
+        <p>{{ message.text }}</p>
+        {% if message.actions %}
+          <div class="assistant-choice-row">
+            {% for action in message.actions %}
+              <button class="assistant-choice {% if action.kind == 'edit' %}assistant-choice--secondary{% endif %}" type="button" data-assistant-action="{{ action.kind }}" data-assistant-field="{{ action.field }}">{{ action.label }}</button>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+  <form class="assistant-composer" data-assistant-composer hidden>
+    <label class="field field--full">
+      <span data-assistant-prompt>Antwort</span>
+      <textarea name="value" rows="3" placeholder="Antwort hier eingeben"></textarea>
+    </label>
+    <div class="button-row button-row--single">
+      <button class="button button--primary" type="submit">Antwort senden</button>
+    </div>
+  </form>
+</section>
+
 <section class="listing-workbench">
   <aside class="workbench-side">
     <article class="card">
@@ -476,6 +511,90 @@
   </details>
 </section>
 <script>
+  const assistantRoot = document.querySelector('[data-assistant-flow]');
+  const assistantThread = assistantRoot?.querySelector('[data-assistant-thread]');
+  const assistantComposer = assistantRoot?.querySelector('[data-assistant-composer]');
+  const assistantPrompt = assistantRoot?.querySelector('[data-assistant-prompt]');
+  const assistantInput = assistantComposer?.querySelector('textarea[name="value"]');
+  let assistantPendingField = '{{ assistant_flow.pendingField }}';
+
+  const assistantFieldLabel = (field) => {
+    if (field === 'description_html') return 'Beschreibung';
+    if (field === 'included_items') return 'Lieferumfang';
+    if (field === 'condition') return 'Zustand';
+    return 'Produktname';
+  };
+
+  const renderAssistantMessages = (messages) => {
+    if (!assistantThread) return;
+    assistantThread.innerHTML = '';
+    messages.forEach((message) => {
+      const article = document.createElement('article');
+      article.className = `assistant-bubble assistant-bubble--${message.role === 'user' ? 'user' : 'assistant'}${message.tone === 'confirmed' ? ' assistant-bubble--confirmed' : ''}`;
+      const strong = document.createElement('strong');
+      strong.textContent = message.role === 'user' ? 'Du' : 'Open Inserto';
+      article.appendChild(strong);
+      const text = document.createElement('p');
+      text.textContent = message.text;
+      article.appendChild(text);
+      if (Array.isArray(message.actions) && message.actions.length) {
+        const row = document.createElement('div');
+        row.className = 'assistant-choice-row';
+        message.actions.forEach((action) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `assistant-choice${action.kind === 'edit' ? ' assistant-choice--secondary' : ''}`;
+          button.dataset.assistantAction = action.kind;
+          button.dataset.assistantField = action.field;
+          button.textContent = action.label;
+          row.appendChild(button);
+        });
+        article.appendChild(row);
+      }
+      assistantThread.appendChild(article);
+    });
+  };
+
+  const sendAssistantAction = async (payload) => {
+    if (!assistantRoot) return;
+    const response = await fetch(`/drafts/${assistantRoot.dataset.draftId}/assistant/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    assistantPendingField = data.pendingField || '';
+    renderAssistantMessages(data.messages || []);
+    if (!assistantPendingField) {
+      assistantComposer?.setAttribute('hidden', 'hidden');
+    }
+  };
+
+  assistantRoot?.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-assistant-action]');
+    if (!button) return;
+    const action = button.dataset.assistantAction;
+    const field = button.dataset.assistantField;
+    if (action === 'edit') {
+      assistantPendingField = field;
+      assistantComposer?.removeAttribute('hidden');
+      if (assistantPrompt) assistantPrompt.textContent = `${assistantFieldLabel(field)} eingeben`;
+      assistantInput?.focus();
+      return;
+    }
+    await sendAssistantAction({ action, field });
+  });
+
+  assistantComposer?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!assistantPendingField || !assistantInput?.value.trim()) return;
+    const value = assistantInput.value.trim();
+    assistantInput.value = '';
+    assistantComposer.setAttribute('hidden', 'hidden');
+    await sendAssistantAction({ action: 'answer', field: assistantPendingField, value });
+  });
+
   const shippingProfileSelect = document.querySelector("#shipping_profile");
   const shippingProfileDescription = document.querySelector("#shipping_profile_description");
   if (shippingProfileSelect && shippingProfileDescription) {

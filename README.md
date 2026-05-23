@@ -105,13 +105,13 @@ http://localhost:8000/integrations/ebay/callback?code=<CODE>&state=<STATE>
 
 Das aktuelle MVP bleibt bewusst serverseitig und formularnah, ist aber nicht das endgültige Zielbild.
 
-Die nächste Phase ist ein **chat-artiger Assisted-Selling-Flow**:
+Die nächste Phase ist ein **chat-artiger Assisted-Selling-Flow**. Ein erster konkreter Beta-Schritt ist bereits im Draft-Detail sichtbar:
 
 - Einstieg weiter über Bilder
 - sichtbare Analysephase im Verlauf
-- erkannte Angaben bestätigen oder korrigieren
-- nur noch gezielte Rückfragen bei Unsicherheit
-- dynamische Nachlade-Logik ohne Full-Page-Reload
+- erkannte Kernangaben direkt im Assistenten-Flow bestätigen oder korrigieren
+- fehlende Kerninfos werden schrittweise ohne Full-Page-Reload nachgefragt
+- das klassische Review-Formular bleibt als Fallback und Feinjustierung bestehen
 
 Die Architekturentscheidung dazu ist in [`docs/adr/0018-conversational-assisted-selling-ui.md`](docs/adr/0018-conversational-assisted-selling-ui.md) festgehalten.
 

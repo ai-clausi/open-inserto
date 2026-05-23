@@ -353,6 +353,110 @@ def build_draft_result_summary(
     }
 
 
+ASSISTANT_FIELD_LABELS = {
+    "title": "Produktname",
+    "condition": "Zustand",
+    "included_items": "Lieferumfang",
+    "description_html": "Beschreibung",
+}
+
+
+def _assistant_flow_state(draft) -> dict[str, Any]:
+    state = draft.listing.attributes.get("assistantFlow")
+    return state if isinstance(state, dict) else {}
+
+
+def _assistant_flow_events(draft) -> list[dict[str, str]]:
+    events = _assistant_flow_state(draft).get("events")
+    if not isinstance(events, list):
+        return []
+    normalized: list[dict[str, str]] = []
+    for item in events:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip()
+        text = str(item.get("text") or "").strip()
+        if role and text:
+            normalized.append({"role": role, "text": text})
+    return normalized
+
+
+def _append_assistant_event(draft, *, role: str, text: str) -> None:
+    if not text.strip():
+        return
+    state = _assistant_flow_state(draft)
+    events = _assistant_flow_events(draft)
+    events.append({"role": role, "text": text.strip()})
+    state["events"] = events[-12:]
+    draft.listing.attributes["assistantFlow"] = state
+
+
+def _assistant_field_value(draft, field: str) -> str:
+    if field == "title":
+        return draft.listing.title.strip()
+    if field == "condition":
+        return draft.listing.condition.strip()
+    if field == "included_items":
+        return "\n".join(item.strip() for item in draft.listing.included_items if item.strip())
+    if field == "description_html":
+        return draft.source.notes.strip()
+    return ""
+
+
+def build_assistant_flow(draft) -> dict[str, Any]:
+    confirmed_fields = set(get_review_metadata(draft).get("confirmedFields", []))
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "assistant",
+            "text": (
+                f"Ich habe {len(draft.source.images)} Bild{'er' if len(draft.source.images) != 1 else ''} analysiert "
+                "und bereite den Verkaufsdialog Schritt für Schritt vor."
+            ),
+        }
+    ]
+    messages.extend(_assistant_flow_events(draft))
+
+    pending_field = ""
+    for field in ("title", "condition", "included_items", "description_html"):
+        value = _assistant_field_value(draft, field)
+        label = ASSISTANT_FIELD_LABELS[field]
+        if value and field in confirmed_fields:
+            messages.append({
+                "role": "assistant",
+                "text": f"{label} ist bestätigt: {value.splitlines()[0]}",
+                "tone": "confirmed",
+            })
+            continue
+        if value:
+            messages.append({
+                "role": "assistant",
+                "text": f"Ich habe {label.lower()} erkannt: {value.splitlines()[0]}",
+                "field": field,
+                "actions": [
+                    {"kind": "confirm", "label": "Super", "field": field},
+                    {"kind": "edit", "label": "Ändern", "field": field},
+                ],
+            })
+        else:
+            messages.append({
+                "role": "assistant",
+                "text": f"Bitte ergänze noch {label.lower()}.",
+                "field": field,
+                "actions": [{"kind": "edit", "label": "Antworten", "field": field}],
+            })
+        pending_field = field
+        break
+
+    if not pending_field:
+        messages.append({
+            "role": "assistant",
+            "text": "Perfekt, die Kernangaben sind bestätigt. Du kannst jetzt unten noch Feinheiten anpassen oder direkt den eBay-Schritt vorbereiten.",
+            "tone": "confirmed",
+        })
+
+    return {"messages": messages, "pendingField": pending_field, "fieldLabels": ASSISTANT_FIELD_LABELS}
+
+
 @router.get("/health")
 def health() -> dict[str, str]:
     settings = get_settings()
@@ -569,6 +673,7 @@ def draft_detail(request: Request, draft_id: str):
             review_status_label=current_review_status_label,
             review_state_label=current_review_status_label,
             display_status=display_status,
+            assistant_flow=build_assistant_flow(draft),
             show_technical_workflow_hint=(review_state != "ready" or bool(marketplace_readiness_errors)),
             core_fields=CORE_FIELDS,
             optional_fields=OPTIONAL_FIELDS,
@@ -600,6 +705,76 @@ def draft_reanalyze(request: Request, draft_id: str):
     autofill_ebay_required_aspects(draft, settings)
     repository.save_draft(draft)
     return RedirectResponse(url=f"/drafts/{draft.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/drafts/{draft_id}/assistant/message")
+async def draft_assistant_message(request: Request, draft_id: str):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    payload = await request.json()
+    action = str(payload.get("action") or "").strip()
+    field = str(payload.get("field") or "").strip()
+    value = str(payload.get("value") or "").strip()
+    if field not in ASSISTANT_FIELD_LABELS:
+        raise HTTPException(status_code=400, detail="Ungültiges Feld")
+
+    confirmed_fields = set(get_review_metadata(draft).get("confirmedFields", []))
+
+    if action == "confirm":
+        confirmed_fields.add(field)
+        _append_assistant_event(draft, role="user", text="Super")
+        _append_assistant_event(draft, role="assistant", text=f"Alles klar, ich markiere {ASSISTANT_FIELD_LABELS[field].lower()} als bestätigt.")
+    elif action == "answer":
+        current_values = get_review_form_values(draft)
+        title = draft.listing.title
+        condition = draft.listing.condition
+        description = current_values["description"]
+        included_items = current_values["included_items"]
+        if field == "title":
+            title = value
+        elif field == "condition":
+            condition = value
+        elif field == "description_html":
+            description = value
+        elif field == "included_items":
+            included_items = value
+
+        confirmed_fields.add(field)
+        update_draft_from_review(
+            draft,
+            title=title,
+            condition=condition,
+            description=description,
+            included_items=included_items,
+            brand=draft.listing.brand,
+            model=draft.listing.model,
+            subtitle=draft.listing.subtitle,
+            category_suggestion=draft.listing.category_suggestion,
+            hints=current_values["hints"],
+            product_identifier_type=current_values["product_identifier_type"],
+            product_identifier_value=current_values["product_identifier_value"],
+            key_technical_details=current_values["key_technical_details"],
+            shipping_profile=get_selected_shipping_profile(draft),
+            confirm_fields=sorted(confirmed_fields),
+            action="confirm",
+        )
+        _append_assistant_event(draft, role="user", text=value)
+        _append_assistant_event(draft, role="assistant", text=f"Danke, ich habe {ASSISTANT_FIELD_LABELS[field].lower()} aktualisiert.")
+    elif action != "edit":
+        raise HTTPException(status_code=400, detail="Ungültige Aktion")
+
+    if action == "confirm":
+        draft.listing.attributes["review"] = {
+            **get_review_metadata(draft),
+            "confirmedFields": sorted(confirmed_fields),
+        }
+
+    repository.save_draft(draft)
+    return JSONResponse({"ok": True, **build_assistant_flow(draft)})
 
 
 @router.post("/drafts/{draft_id}/review", response_class=HTMLResponse)

@@ -151,6 +151,35 @@ def test_draft_detail_can_trigger_analysis_again_from_ui(client: TestClient, mon
     assert "Leichte Kratzer\nSchirm leicht verzogen" in detail.text
 
 
+def test_draft_detail_exposes_assistant_flow_and_accepts_async_reply(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "iPhone", "condition": "gut", "notes": "Leichte Spuren", "accessories": "Ladekabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    detail = client.get(location)
+    assert "Assistenten-Flow" in detail.text
+    assert "Chat-artige Rückfragen ohne Reload" in detail.text
+    assert "Ich habe produktname erkannt" in detail.text
+
+    assistant = client.post(
+        f"{location}/assistant/message",
+        json={"action": "answer", "field": "title", "value": "Apple iPhone 13"},
+    )
+
+    assert assistant.status_code == 200
+    payload = assistant.json()
+    assert payload["ok"] is True
+    assert any("Apple iPhone 13" in message["text"] for message in payload["messages"])
+
+    updated_detail = client.get(location)
+    assert "Apple iPhone 13" in updated_detail.text
+
+
 def test_post_upload_without_images_returns_validation_error(client: TestClient):
     response = client.post("/drafts/upload", data={"notes": "Ohne Bild"})
 

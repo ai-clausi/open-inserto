@@ -348,6 +348,29 @@ body {
   color: var(--info);
 }
 
+.assistant-workflow {
+  margin-bottom: 1rem;
+}
+
+.assistant-thread {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.assistant-bubble--confirmed {
+  border-color: rgba(2, 122, 72, 0.18);
+  background: linear-gradient(180deg, rgba(2, 122, 72, 0.08), rgba(255, 255, 255, 0.98));
+}
+
+.assistant-choice {
+  border: 0;
+  cursor: pointer;
+}
+
+.assistant-composer {
+  margin-top: 1rem;
+}
+
 .upload-dropzone {
   min-height: 100%;
   border: 1.5px dashed rgba(37, 99, 235, 0.25);
