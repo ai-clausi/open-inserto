@@ -40,115 +40,116 @@
 {% block title %}{{ app_name }} - Draft {{ draft.id }}{% endblock %}
 
 {% block content %}
-<section class="hero hero--landing hero--detail">
-  <div class="hero-landing__copy">
-    <p class="eyebrow">Artikelentwurf</p>
-    <h1>{{ draft.listing.title or result_summary.headline }}</h1>
-    <p class="hero-lead">{{ result_summary.body }}</p>
-    <p class="hero-support">Analyse: <strong>{{ analysis_state.label }}</strong> · Bilder: <strong>{{ draft.source.images | length }}</strong></p>
-    <div class="hero-actions hero-actions--split">
-      <a class="button button--primary" href="#{{ result_summary.primary_action_target }}">{{ result_summary.primary_action_label }}</a>
-      <a class="button button--secondary" href="/drafts">Zurück zur Übersicht</a>
-    </div>
-  </div>
-
-  <aside class="hero-landing__panel">
-    <p class="eyebrow">Nächster Schritt</p>
-    <div class="landing-metrics">
-      <div class="landing-metric">
-        <span>Status</span>
-        <strong>{{ display_status.label }}</strong>
-      </div>
-      <div class="landing-metric">
-        <span>eBay</span>
-        <strong>{{ marketplace_status_label }}</strong>
-      </div>
-      <div class="landing-metric landing-metric--wide">
-        <span>Kernangaben</span>
-        <strong>{{ review_state_label }}</strong>
-      </div>
-    </div>
-  </aside>
-</section>
-
-{% if missing_core_fields or marketplace_readiness_errors %}
-  <section class="notice-strip">
-    {% if missing_core_fields %}
-      <div class="notice notice--warning">
-        <h3>Noch vor dem Senden ergänzen</h3>
-        <ul>
-          {% for item in missing_core_fields %}
-            <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-    {% endif %}
-    {% if marketplace_readiness_errors %}
-      <div class="notice notice--warning">
-        <h3>eBay braucht noch</h3>
-        <ul>
-          {% for item in marketplace_readiness_errors %}
-            <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-        {% if marketplace_error_groups.setup %}
-          <div class="button-row button-row--single">
-            <a class="button button--secondary" href="/">eBay-Setup öffnen</a>
+<section class="mx-auto flex max-w-5xl flex-col gap-6 py-0 sm:py-8">
+  <div class="overflow-hidden bg-transparent sm:rounded-[2rem] sm:border sm:border-slate-200 sm:bg-white sm:shadow-soft">
+    <div class="bg-gradient-to-b from-slate-100 via-slate-50 to-white px-0 py-4 sm:px-6 sm:py-6">
+      <div class="flex min-h-[72vh] flex-col rounded-none bg-transparent sm:min-h-[46rem] sm:rounded-[1.75rem] sm:bg-white/70 sm:ring-1 sm:ring-slate-200/70">
+        <div class="flex items-center justify-between gap-3 px-0 pb-3 pt-2 sm:px-6">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Open Inserto</p>
+            <h1 class="mt-1 text-2xl font-semibold text-slate-950">{{ draft.listing.title or result_summary.headline }}</h1>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs font-medium text-slate-700">
+              <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">{{ analysis_state.label }}</span>
+              <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">{{ display_status.label }}</span>
+              <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">{{ marketplace_status_label }}</span>
+              <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">{{ review_state_label }}</span>
+            </div>
           </div>
-        {% elif marketplace_error_groups.item %}
-          <div class="button-row button-row--single">
-            <a class="button button--secondary" href="#listing-editor">Artikelangaben ergänzen</a>
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <a class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800" href="#{{ result_summary.primary_action_target }}">{{ result_summary.primary_action_label }}</a>
+            <a class="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-950" href="/drafts">Zurück zur Übersicht</a>
           </div>
-        {% endif %}
-      </div>
-    {% endif %}
-  </section>
-{% endif %}
+        </div>
 
-<section class="card assistant-workflow border border-emerald-100 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white shadow-soft" id="assistant-flow" data-assistant-flow data-draft-id="{{ draft.id }}">
-  <div class="section-head section-head--compact">
-    <div>
-      <p class="eyebrow text-emerald-200">Assistenten-Flow</p>
-      <h2 class="text-white">Chat-artige Rückfragen ohne Reload</h2>
+        <div class="flex-1 space-y-4 overflow-y-auto px-0 pb-6 pt-2 sm:px-6" data-assistant-thread>
+          <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm bg-slate-950 px-5 py-4 text-white shadow-soft opacity-0 translate-y-4 transition duration-500" data-chat-node data-chat-static="true">
+            <div class="flex items-center gap-3">
+              <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-lg">✨</div>
+              <div>
+                <strong class="block text-sm font-semibold text-emerald-200">Open Inserto</strong>
+                <p class="text-xs text-slate-400">soeben gesendet</p>
+              </div>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-slate-100">{{ result_summary.body }}</p>
+          </article>
+
+          <article class="ml-auto max-w-[92%] rounded-[1.75rem] rounded-tr-sm border border-emerald-100 bg-emerald-400 px-5 py-4 text-emerald-950 shadow-sm opacity-0 translate-y-4 transition duration-500" data-chat-node data-chat-static="true">
+            <strong class="block text-sm font-semibold">Du</strong>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {% for image in draft.source.images %}
+                <figure class="overflow-hidden rounded-[1.5rem] border border-emerald-200 bg-white/80 shadow-sm">
+                  <img class="h-40 w-full object-cover" src="/{{ image.storage_path }}" alt="{{ image.original_filename }}">
+                  <figcaption class="px-4 py-3 text-xs font-medium text-emerald-950/80">{{ image.order }}. {{ image.original_filename }}</figcaption>
+                </figure>
+              {% endfor %}
+            </div>
+            {% if original_input.get('notes') %}
+              <p class="mt-3 text-sm leading-6">{{ original_input.get('notes') }}</p>
+            {% endif %}
+          </article>
+
+          {% for message in assistant_flow.messages %}
+            <article class="{{ 'ml-auto border border-emerald-100 bg-emerald-400 text-emerald-950 shadow-sm' if message.role == 'user' else 'bg-slate-950 text-white shadow-soft' }} max-w-[92%] rounded-[1.75rem] px-5 py-4 {{ 'rounded-tr-sm' if message.role == 'user' else 'rounded-tl-sm' }} opacity-0 translate-y-4 transition duration-500{% if message.tone == 'confirmed' and message.role != 'user' %} ring-1 ring-emerald-300/40{% endif %}" data-chat-node>
+              <strong class="block text-sm font-semibold {{ 'text-emerald-950' if message.role == 'user' else 'text-emerald-200' }}">{{ 'Du' if message.role == 'user' else 'Open Inserto' }}</strong>
+              <p class="mt-3 text-sm leading-6 {{ 'text-emerald-950' if message.role == 'user' else 'text-slate-100' }}">{{ message.text }}</p>
+              {% if message.actions %}
+                <div class="mt-4 flex flex-wrap gap-2">
+                  {% for action in message.actions %}
+                    <button class="inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold transition {{ 'bg-white text-slate-950 hover:bg-slate-100' if action.kind == 'edit' else 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300' }}" type="button" data-assistant-action="{{ action.kind }}" data-assistant-field="{{ action.field }}">{{ action.label }}</button>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </article>
+          {% endfor %}
+        </div>
+
+        <form class="mx-0 mt-auto border-t border-slate-200/80 bg-white/90 px-4 py-4 backdrop-blur sm:mx-6 sm:mb-6 sm:rounded-[1.75rem] sm:border" data-assistant-composer hidden>
+          <label class="block">
+            <span class="mb-2 block text-sm font-medium text-slate-700" data-assistant-prompt>Antwort</span>
+            <textarea class="min-h-24 w-full rounded-2xl border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" name="value" rows="3" placeholder="Antwort hier eingeben"></textarea>
+          </label>
+          <div class="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+            <span>Der Ablauf bleibt hier im Chat. Das Formular darunter ist nur Fallback und Feinschliff.</span>
+            <button class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:bg-slate-800" type="submit">Antwort senden</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
-  <p class="section-copy text-slate-200">Ich bestätige erkannte Angaben direkt im Verlauf und frage nur dort nach, wo für den Entwurf noch etwas fehlt.</p>
-  <div class="mb-5 flex items-center gap-4 rounded-3xl border border-white/10 bg-white/5 px-4 py-4">
-    <div class="relative h-12 w-12 shrink-0">
-      <span class="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping"></span>
-      <span class="absolute inset-1 rounded-full bg-emerald-400/30 animate-pulse"></span>
-      <span class="absolute inset-[10px] rounded-full bg-emerald-400"></span>
-    </div>
-    <div>
-      <p class="text-sm font-semibold text-white">Analyse läuft im Hintergrund</p>
-      <p class="text-sm text-slate-300">Erkannte Angaben werden hier direkt bestätigt oder korrigiert.</p>
-    </div>
-  </div>
-  <div class="assistant-thread" data-assistant-thread>
-    {% for message in assistant_flow.messages %}
-      <article class="assistant-bubble assistant-bubble--{{ 'user' if message.role == 'user' else 'assistant' }}{% if message.tone == 'confirmed' %} assistant-bubble--confirmed{% endif %}">
-        <strong>{{ 'Du' if message.role == 'user' else 'Open Inserto' }}</strong>
-        <p>{{ message.text }}</p>
-        {% if message.actions %}
-          <div class="assistant-choice-row">
-            {% for action in message.actions %}
-              <button class="assistant-choice {% if action.kind == 'edit' %}assistant-choice--secondary{% endif %}" type="button" data-assistant-action="{{ action.kind }}" data-assistant-field="{{ action.field }}">{{ action.label }}</button>
+
+  {% if missing_core_fields or marketplace_readiness_errors %}
+    <section class="grid gap-4 lg:grid-cols-2">
+      {% if missing_core_fields %}
+        <div class="rounded-[1.75rem] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm">
+          <h2 class="text-base font-semibold">Noch vor dem Senden ergänzen</h2>
+          <ul class="mt-3 list-disc space-y-1 pl-5 text-sm">
+            {% for item in missing_core_fields %}
+              <li>{{ item }}</li>
             {% endfor %}
-          </div>
-        {% endif %}
-      </article>
-    {% endfor %}
-  </div>
-  <form class="assistant-composer rounded-3xl border border-white/10 bg-white/5 p-4" data-assistant-composer hidden>
-    <label class="field field--full">
-      <span class="text-slate-100" data-assistant-prompt>Antwort</span>
-      <textarea class="rounded-2xl border-white/10 bg-slate-950 text-white placeholder:text-slate-400" name="value" rows="3" placeholder="Antwort hier eingeben"></textarea>
-    </label>
-    <div class="button-row button-row--single">
-      <button class="button button--primary" type="submit">Antwort senden</button>
-    </div>
-  </form>
-</section>
+          </ul>
+        </div>
+      {% endif %}
+      {% if marketplace_readiness_errors %}
+        <div class="rounded-[1.75rem] border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm">
+          <h2 class="text-base font-semibold">eBay braucht noch</h2>
+          <ul class="mt-3 list-disc space-y-1 pl-5 text-sm">
+            {% for item in marketplace_readiness_errors %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% if marketplace_error_groups.setup %}
+            <div class="mt-4">
+              <a class="inline-flex items-center justify-center rounded-2xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-950 shadow-sm" href="/">eBay-Setup öffnen</a>
+            </div>
+          {% elif marketplace_error_groups.item %}
+            <div class="mt-4">
+              <a class="inline-flex items-center justify-center rounded-2xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-950 shadow-sm" href="#listing-editor">Artikelangaben ergänzen</a>
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
 
 <section class="listing-workbench">
   <aside class="workbench-side">
@@ -521,12 +522,27 @@
   </details>
 </section>
 <script>
-  const assistantRoot = document.querySelector('[data-assistant-flow]');
-  const assistantThread = assistantRoot?.querySelector('[data-assistant-thread]');
-  const assistantComposer = assistantRoot?.querySelector('[data-assistant-composer]');
-  const assistantPrompt = assistantRoot?.querySelector('[data-assistant-prompt]');
+  const assistantRoot = document.body;
+  const assistantThread = document.querySelector('[data-assistant-thread]');
+  const assistantComposer = document.querySelector('[data-assistant-composer]');
+  const assistantPrompt = document.querySelector('[data-assistant-prompt]');
   const assistantInput = assistantComposer?.querySelector('textarea[name="value"]');
+  const draftId = '{{ draft.id }}';
   let assistantPendingField = '{{ assistant_flow.pendingField }}';
+
+  function scrollThreadToBottom(behavior = 'smooth') {
+    assistantThread?.lastElementChild?.scrollIntoView({ behavior, block: 'end' });
+  }
+
+  function revealChatNodes() {
+    const nodes = Array.from(document.querySelectorAll('[data-chat-node]'));
+    nodes.forEach((node, index) => {
+      window.setTimeout(() => {
+        node.classList.remove('opacity-0', 'translate-y-4');
+        scrollThreadToBottom(index === 0 ? 'auto' : 'smooth');
+      }, Math.min(index * 110, 1200));
+    });
+  }
 
   const assistantFieldLabel = (field) => {
     if (field === 'description_html') return 'Beschreibung';
@@ -537,23 +553,28 @@
 
   const renderAssistantMessages = (messages) => {
     if (!assistantThread) return;
+    const persistentNodes = Array.from(assistantThread.querySelectorAll('[data-chat-static="true"]'));
     assistantThread.innerHTML = '';
+    persistentNodes.forEach((node) => assistantThread.appendChild(node));
     messages.forEach((message) => {
       const article = document.createElement('article');
-      article.className = `assistant-bubble assistant-bubble--${message.role === 'user' ? 'user' : 'assistant'}${message.tone === 'confirmed' ? ' assistant-bubble--confirmed' : ''}`;
+      article.dataset.chatNode = 'true';
+      article.className = `${message.role === 'user' ? 'ml-auto border border-emerald-100 bg-emerald-400 text-emerald-950 shadow-sm rounded-tr-sm' : 'bg-slate-950 text-white shadow-soft rounded-tl-sm'} max-w-[92%] rounded-[1.75rem] px-5 py-4 opacity-0 translate-y-4 transition duration-500${message.tone === 'confirmed' && message.role !== 'user' ? ' ring-1 ring-emerald-300/40' : ''}`;
       const strong = document.createElement('strong');
+      strong.className = `block text-sm font-semibold ${message.role === 'user' ? 'text-emerald-950' : 'text-emerald-200'}`;
       strong.textContent = message.role === 'user' ? 'Du' : 'Open Inserto';
       article.appendChild(strong);
       const text = document.createElement('p');
+      text.className = `mt-3 text-sm leading-6 ${message.role === 'user' ? 'text-emerald-950' : 'text-slate-100'}`;
       text.textContent = message.text;
       article.appendChild(text);
       if (Array.isArray(message.actions) && message.actions.length) {
         const row = document.createElement('div');
-        row.className = 'assistant-choice-row';
+        row.className = 'mt-4 flex flex-wrap gap-2';
         message.actions.forEach((action) => {
           const button = document.createElement('button');
           button.type = 'button';
-          button.className = `assistant-choice${action.kind === 'edit' ? ' assistant-choice--secondary' : ''}`;
+          button.className = `inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold transition ${action.kind === 'edit' ? 'bg-white text-slate-950 hover:bg-slate-100' : 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300'}`;
           button.dataset.assistantAction = action.kind;
           button.dataset.assistantField = action.field;
           button.textContent = action.label;
@@ -562,12 +583,16 @@
         article.appendChild(row);
       }
       assistantThread.appendChild(article);
+      window.requestAnimationFrame(() => {
+        article.classList.remove('opacity-0', 'translate-y-4');
+        scrollThreadToBottom();
+      });
     });
   };
 
   const sendAssistantAction = async (payload) => {
     if (!assistantRoot) return;
-    const response = await fetch(`/drafts/${assistantRoot.dataset.draftId}/assistant/message`, {
+    const response = await fetch(`/drafts/${draftId}/assistant/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -799,6 +824,8 @@
     });
   }
 
+  revealChatNodes();
+  scrollThreadToBottom('auto');
   initializeSearchableSelects();
 </script>
 {% endblock %}

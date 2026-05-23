@@ -164,9 +164,9 @@ def test_draft_detail_exposes_assistant_flow_and_accepts_async_reply(client: Tes
 
     location = response.headers["location"]
     detail = client.get(location)
-    assert "Assistenten-Flow" in detail.text
-    assert "Chat-artige Rückfragen ohne Reload" in detail.text
+    assert "Der Ablauf bleibt hier im Chat." in detail.text
     assert "Ich habe produktname erkannt" in detail.text
+    assert "Zurück" in detail.text
 
     assistant = client.post(
         f"{location}/assistant/message",
