@@ -31,8 +31,8 @@ In der ersten Ausbaustufe liegt der Fokus auf eBay und einem sicheren Draft-Work
 
 ## Nächste Schritte
 
-1. Tech-Stack festlegen
-2. internes Draft-Datenmodell definieren
-3. Template-Platzhalter festlegen
-4. eBay Auth-/API-Setup klären
-5. MVP für „Bilder → Draft-Daten → HTML → eBay Draft“ bauen
+1. bestehendes MVP stabil halten und den Review-Flow weiter absichern
+2. Conversation-Modell für Assistenten-Nachrichten und Antwortoptionen ergänzen
+3. Design-System und mobile-first UI auf Basis des in ADR 0018 beschriebenen Stacks aufbauen
+4. dynamische Nachrichten-Updates ohne Full-Page-Reload einführen
+5. Review und Publish schrittweise in einen chat-artigen Assisted-Selling-Flow überführen

@@ -71,6 +71,37 @@
       <button class="button button--primary" type="submit">Draft erstellen</button>
     </section>
   </form>
+  <section class="assistant-preview card">
+    <div class="section-head section-head--compact">
+      <div>
+        <p class="eyebrow">UX-Zielbild</p>
+        <h2>Assistenten-Flow statt Formularwüste</h2>
+      </div>
+      <span class="status-chip status-chip--muted">Nächste Phase</span>
+    </div>
+    <p class="section-copy">
+      Der Upload bleibt der Einstieg. Danach soll der Draft schrittweise in einen chat-artigen Assistenten-Flow übergehen,
+      der nur noch gezielte Rückfragen stellt und erkannte Angaben aktiv bestätigen lässt.
+    </p>
+    <div class="assistant-preview__chat" aria-label="Beispiel für den künftigen Assistenten-Flow">
+      <article class="assistant-bubble assistant-bubble--assistant">
+        <strong>Open Inserto</strong>
+        <p>Ich analysiere jetzt deine Bilder und bereite den Verkaufsentwurf vor.</p>
+      </article>
+      <article class="assistant-bubble assistant-bubble--assistant">
+        <strong>Open Inserto</strong>
+        <p>Ich habe ein iPhone erkannt. Farbe und Speicher prüfe ich gleich, fehlende Angaben frage ich nur bei Unsicherheit ab.</p>
+        <div class="assistant-choice-row">
+          <span class="assistant-choice">Super</span>
+          <span class="assistant-choice assistant-choice--secondary">Ändern</span>
+        </div>
+      </article>
+      <article class="assistant-bubble assistant-bubble--user">
+        <strong>Du</strong>
+        <p>256 GB, Zustand ist gut, Originalkabel ist dabei.</p>
+      </article>
+    </div>
+  </section>
 </section>
 
 <script>
