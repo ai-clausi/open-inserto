@@ -188,7 +188,7 @@ def test_draft_detail_exposes_assistant_flow_and_accepts_async_reply(client: Tes
     location = response.headers["location"]
     detail = client.get(location)
     assert "Der Ablauf bleibt hier im Chat." in detail.text
-    assert "Ich habe produktname erkannt" in detail.text
+    assert "Ich habe einen Produktnamen erkannt." in detail.text
     assert "Zurück" in detail.text
 
     assistant = client.post(
@@ -203,6 +203,32 @@ def test_draft_detail_exposes_assistant_flow_and_accepts_async_reply(client: Tes
 
     updated_detail = client.get(location)
     assert "Apple iPhone 13" in updated_detail.text
+
+
+def test_draft_assistant_uses_updated_title_for_follow_up_steps(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "DALI Lautsprecher Set", "condition": "gut", "notes": "Standlautsprecher mit Centerspeaker", "accessories": "Abdeckungen"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+
+    assistant = client.post(
+        f"{location}/assistant/message",
+        json={"action": "answer", "field": "title", "value": "DALI Rubikore 6 + DALI Rubikore Cinema"},
+    )
+
+    assert assistant.status_code == 200
+    payload = assistant.json()
+    assert payload["ok"] is True
+    assert any("Produktname aktualisiert" in message["text"] for message in payload["messages"])
+    assert any("DALI Rubikore 6 + DALI Rubikore Cinema" in message["text"] for message in payload["messages"])
+
+    updated_detail = client.get(location)
+    assert "DALI Rubikore 6 + DALI Rubikore Cinema" in updated_detail.text
 
 
 def test_draft_assistant_can_confirm_category_without_page_reload(client: TestClient):

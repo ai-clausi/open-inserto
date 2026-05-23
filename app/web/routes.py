@@ -1,4 +1,6 @@
+from html import unescape
 from pathlib import Path
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -421,7 +423,8 @@ def _assistant_field_value(draft, field: str) -> str:
     if field == "included_items":
         return "\n".join(item.strip() for item in draft.listing.included_items if item.strip())
     if field == "description_html":
-        return draft.source.notes.strip()
+        plain = re.sub(r"<[^>]+>", " ", draft.listing.description_html or "")
+        return re.sub(r"\s+", " ", unescape(plain)).strip()
     return ""
 
 
@@ -431,6 +434,19 @@ def _assistant_field_label(field: str) -> str:
     if field.startswith("ebay_aspect::"):
         return _assistant_aspect_name(field)
     return field
+
+
+def _assistant_field_prompt(field: str) -> str:
+    prompts = {
+        "title": "Ich habe einen Produktnamen erkannt. Passt der so für dein Angebot?",
+        "condition": "Welchen Zustand soll ich festhalten?",
+        "included_items": "Was gehört alles zum Lieferumfang?",
+        "description_html": "So würde ich den Beschreibungstext aktuell formulieren. Passt das für dich?",
+        "category_suggestion": "Welche eBay-Kategorie passt am besten?",
+    }
+    if field.startswith("ebay_aspect::"):
+        return f"Für eBay fehlt noch { _assistant_aspect_name(field) }."
+    return prompts.get(field, f"Bitte bestätige { _assistant_field_label(field).lower() }.")
 
 
 def _update_single_assistant_field(draft, field: str, value: str) -> None:
@@ -483,6 +499,27 @@ def _update_single_assistant_field(draft, field: str, value: str) -> None:
         draft.listing.attributes.pop("ebayAspects", None)
 
 
+def _category_suggestion_actions(draft, *, include_confirm: bool) -> list[dict[str, str]]:
+    category_resolution = get_category_resolution(draft)
+    suggestions = category_resolution.get("suggestions") if isinstance(category_resolution.get("suggestions"), list) else []
+    selected_id = str(category_resolution.get("selected_id") or draft.listing.category_suggestion or "").strip()
+    actions: list[dict[str, str]] = []
+    if include_confirm and selected_id:
+        actions.append({"kind": "confirm", "label": "Passt", "field": "category_suggestion"})
+    for item in suggestions[:4]:
+        if not isinstance(item, dict):
+            continue
+        category_id = str(item.get("id") or "").strip()
+        label = str(item.get("name") or category_id).strip()
+        if not category_id or not label or category_id == selected_id:
+            continue
+        actions.append({"kind": "select", "label": label[:48], "field": "category_suggestion", "value": category_id})
+        if len(actions) >= (5 if include_confirm else 4):
+            break
+    actions.append({"kind": "edit", "label": "Eigene Suche", "field": "category_suggestion"})
+    return actions
+
+
 def _build_assistant_category_message(draft) -> dict[str, Any] | None:
     category_resolution = get_category_resolution(draft)
     state = str(category_resolution.get("state") or "")
@@ -490,20 +527,11 @@ def _build_assistant_category_message(draft) -> dict[str, Any] | None:
     selected_name = str(category_resolution.get("selected_name") or "").strip()
 
     if state == "needs_selection":
-        suggestions = category_resolution.get("suggestions") if isinstance(category_resolution.get("suggestions"), list) else []
-        actions = []
-        for item in suggestions[:4]:
-            if not isinstance(item, dict):
-                continue
-            category_id = str(item.get("id") or "").strip()
-            label = str(item.get("name") or category_id).strip()
-            if category_id and label:
-                actions.append({"kind": "select", "label": label[:48], "field": "category_suggestion", "value": category_id})
         return {
             "role": "assistant",
             "text": str(category_resolution.get("message") or "Ich habe mehrere passende eBay-Kategorien gefunden. Wähle bitte die beste aus oder antworte mit einem anderen Suchbegriff."),
             "field": "category_suggestion",
-            "actions": actions or [{"kind": "edit", "label": "Anderen Begriff senden", "field": "category_suggestion"}],
+            "actions": _category_suggestion_actions(draft, include_confirm=False),
         }
 
     if selected_id:
@@ -511,10 +539,7 @@ def _build_assistant_category_message(draft) -> dict[str, Any] | None:
             "role": "assistant",
             "text": f"Ich würde für eBay aktuell diese Kategorie verwenden: {selected_name or selected_id}.",
             "field": "category_suggestion",
-            "actions": [
-                {"kind": "confirm", "label": "Passt", "field": "category_suggestion"},
-                {"kind": "edit", "label": "Kategorie ändern", "field": "category_suggestion"},
-            ],
+            "actions": _category_suggestion_actions(draft, include_confirm=True),
         }
 
     return {
@@ -583,7 +608,7 @@ def build_assistant_flow(draft) -> dict[str, Any]:
         if value:
             messages.append({
                 "role": "assistant",
-                "text": f"Ich habe {label.lower()} erkannt: {value.splitlines()[0]}",
+                "text": f"{_assistant_field_prompt(field)}\n\n{value.splitlines()[0]}",
                 "field": field,
                 "actions": [
                     {"kind": "confirm", "label": "Super", "field": field},
@@ -593,7 +618,7 @@ def build_assistant_flow(draft) -> dict[str, Any]:
         else:
             messages.append({
                 "role": "assistant",
-                "text": f"Bitte ergänze noch {label.lower()}.",
+                "text": _assistant_field_prompt(field),
                 "field": field,
                 "actions": [{"kind": "edit", "label": "Antworten", "field": field}],
             })
@@ -615,7 +640,11 @@ def build_assistant_flow(draft) -> dict[str, Any]:
     if not pending_field:
         messages.append({
             "role": "assistant",
-            "text": "Perfekt, der Chat hat jetzt auch die eBay-relevanten Angaben zusammen. Du kannst unten nur noch optional feinjustieren oder direkt den eBay-Schritt vorbereiten.",
+            "text": "Perfekt, der Chat hat jetzt auch die eBay-relevanten Angaben zusammen. Wenn du willst, kannst du jetzt direkt den finalen Entwurf prüfen oder sofort den eBay-Schritt vorbereiten.",
+            "actions": [
+                {"kind": "link", "label": "Finalen Entwurf prüfen", "href": "#listing-editor"},
+                {"kind": "link", "label": "eBay-Schritt öffnen", "href": "#ebay-send"},
+            ],
             "tone": "confirmed",
         })
 
@@ -910,7 +939,7 @@ async def draft_assistant_message(request: Request, draft_id: str):
             confirmed_fields.add(field)
         assistant_confirmed_fields.add(field)
         _append_assistant_event(draft, role="user", text="Super")
-        _append_assistant_event(draft, role="assistant", text=f"Alles klar, ich markiere {_assistant_field_label(field).lower()} als bestätigt.")
+        _append_assistant_event(draft, role="assistant", text=f"Alles klar, { _assistant_field_label(field) } ist übernommen.")
     elif action in {"answer", "select"}:
         if field == "category_suggestion":
             draft.listing.category_suggestion = value
@@ -922,13 +951,16 @@ async def draft_assistant_message(request: Request, draft_id: str):
             autofill_ebay_required_aspects(draft, settings)
         else:
             _update_single_assistant_field(draft, field, value)
+            if field == "title":
+                resolve_category_suggestion_for_draft(draft, settings)
+                autofill_ebay_required_aspects(draft, settings)
             if field.startswith("ebay_aspect::"):
                 autofill_ebay_required_aspects(draft, settings)
         if field in ASSISTANT_FIELD_LABELS:
             confirmed_fields.add(field)
         assistant_confirmed_fields.add(field)
         _append_assistant_event(draft, role="user", text=value)
-        _append_assistant_event(draft, role="assistant", text=f"Danke, ich habe {_assistant_field_label(field).lower()} aktualisiert.")
+        _append_assistant_event(draft, role="assistant", text=f"Danke, ich habe { _assistant_field_label(field) } aktualisiert.")
     elif action != "edit":
         raise HTTPException(status_code=400, detail="Ungültige Aktion")
 
