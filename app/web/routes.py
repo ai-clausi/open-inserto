@@ -358,6 +358,7 @@ ASSISTANT_FIELD_LABELS = {
     "condition": "Zustand",
     "included_items": "Lieferumfang",
     "description_html": "Beschreibung",
+    "category_suggestion": "eBay-Kategorie",
 }
 
 
@@ -391,6 +392,27 @@ def _append_assistant_event(draft, *, role: str, text: str) -> None:
     draft.listing.attributes["assistantFlow"] = state
 
 
+def _assistant_confirmed_fields(draft) -> set[str]:
+    fields = _assistant_flow_state(draft).get("confirmedFields")
+    if not isinstance(fields, list):
+        return set()
+    return {str(item).strip() for item in fields if str(item).strip()}
+
+
+def _set_assistant_confirmed_fields(draft, fields: set[str]) -> None:
+    state = _assistant_flow_state(draft)
+    state["confirmedFields"] = sorted(field for field in fields if field)
+    draft.listing.attributes["assistantFlow"] = state
+
+
+def _assistant_aspect_field(aspect_name: str) -> str:
+    return f"ebay_aspect::{aspect_name.strip()}"
+
+
+def _assistant_aspect_name(field: str) -> str:
+    return field.removeprefix("ebay_aspect::").strip()
+
+
 def _assistant_field_value(draft, field: str) -> str:
     if field == "title":
         return draft.listing.title.strip()
@@ -403,8 +425,139 @@ def _assistant_field_value(draft, field: str) -> str:
     return ""
 
 
+def _assistant_field_label(field: str) -> str:
+    if field in ASSISTANT_FIELD_LABELS:
+        return ASSISTANT_FIELD_LABELS[field]
+    if field.startswith("ebay_aspect::"):
+        return _assistant_aspect_name(field)
+    return field
+
+
+def _update_single_assistant_field(draft, field: str, value: str) -> None:
+    current_values = get_review_form_values(draft)
+    title = draft.listing.title
+    condition = draft.listing.condition
+    description = current_values["description"]
+    included_items = current_values["included_items"]
+    category_suggestion = draft.listing.category_suggestion
+    ebay_aspects = get_ebay_aspect_values(draft)
+
+    if field == "title":
+        title = value
+    elif field == "condition":
+        condition = value
+    elif field == "description_html":
+        description = value
+    elif field == "included_items":
+        included_items = value
+    elif field == "category_suggestion":
+        category_suggestion = value
+    elif field.startswith("ebay_aspect::"):
+        aspect_name = _assistant_aspect_name(field)
+        if value.strip():
+            ebay_aspects[aspect_name] = value.strip()
+        else:
+            ebay_aspects.pop(aspect_name, None)
+
+    update_draft_from_review(
+        draft,
+        title=title,
+        condition=condition,
+        description=description,
+        included_items=included_items,
+        brand=draft.listing.brand,
+        model=draft.listing.model,
+        subtitle=draft.listing.subtitle,
+        category_suggestion=category_suggestion,
+        hints=current_values["hints"],
+        product_identifier_type=current_values["product_identifier_type"],
+        product_identifier_value=current_values["product_identifier_value"],
+        key_technical_details=current_values["key_technical_details"],
+        shipping_profile=get_selected_shipping_profile(draft),
+        confirm_fields=get_review_metadata(draft).get("confirmedFields", []),
+        action="confirm",
+    )
+    if ebay_aspects:
+        draft.listing.attributes["ebayAspects"] = ebay_aspects
+    else:
+        draft.listing.attributes.pop("ebayAspects", None)
+
+
+def _build_assistant_category_message(draft) -> dict[str, Any] | None:
+    category_resolution = get_category_resolution(draft)
+    state = str(category_resolution.get("state") or "")
+    selected_id = str(category_resolution.get("selected_id") or draft.listing.category_suggestion or "").strip()
+    selected_name = str(category_resolution.get("selected_name") or "").strip()
+
+    if state == "needs_selection":
+        suggestions = category_resolution.get("suggestions") if isinstance(category_resolution.get("suggestions"), list) else []
+        actions = []
+        for item in suggestions[:4]:
+            if not isinstance(item, dict):
+                continue
+            category_id = str(item.get("id") or "").strip()
+            label = str(item.get("name") or category_id).strip()
+            if category_id and label:
+                actions.append({"kind": "select", "label": label[:48], "field": "category_suggestion", "value": category_id})
+        return {
+            "role": "assistant",
+            "text": str(category_resolution.get("message") or "Ich habe mehrere passende eBay-Kategorien gefunden. Wähle bitte die beste aus oder antworte mit einem anderen Suchbegriff."),
+            "field": "category_suggestion",
+            "actions": actions or [{"kind": "edit", "label": "Anderen Begriff senden", "field": "category_suggestion"}],
+        }
+
+    if selected_id:
+        return {
+            "role": "assistant",
+            "text": f"Ich würde für eBay aktuell diese Kategorie verwenden: {selected_name or selected_id}.",
+            "field": "category_suggestion",
+            "actions": [
+                {"kind": "confirm", "label": "Passt", "field": "category_suggestion"},
+                {"kind": "edit", "label": "Kategorie ändern", "field": "category_suggestion"},
+            ],
+        }
+
+    return {
+        "role": "assistant",
+        "text": "Damit der eBay-Teil später sauber läuft, brauche ich noch eine passende Kategorie. Antworte mit einem Suchbegriff oder direkt mit einer eBay-Kategorie-ID.",
+        "field": "category_suggestion",
+        "actions": [{"kind": "edit", "label": "Kategorie angeben", "field": "category_suggestion"}],
+    }
+
+
+def _build_assistant_aspect_message(draft) -> dict[str, Any] | None:
+    aspect_values = get_ebay_aspect_values(draft)
+    for aspect in get_required_category_aspects(draft):
+        name = str(aspect.get("name") or "").strip()
+        if not name:
+            continue
+        field = _assistant_aspect_field(name)
+        value = aspect_values.get(name, "").strip()
+        options = [str(item).strip() for item in aspect.get("values") or [] if str(item).strip()][:4]
+        if value:
+            return {
+                "role": "assistant",
+                "text": f"Für {name} habe ich aktuell diesen Wert: {value}.",
+                "field": field,
+                "actions": [
+                    {"kind": "confirm", "label": "Passt", "field": field},
+                    {"kind": "edit", "label": "Wert ändern", "field": field},
+                ],
+            }
+        actions = [{"kind": "select", "label": option[:40], "field": field, "value": option} for option in options]
+        actions.append({"kind": "edit", "label": "Selbst eingeben", "field": field})
+        return {
+            "role": "assistant",
+            "text": f"Für die eBay-Kategorie fehlt noch {name}.",
+            "field": field,
+            "actions": actions,
+        }
+    return None
+
+
 def build_assistant_flow(draft) -> dict[str, Any]:
     confirmed_fields = set(get_review_metadata(draft).get("confirmedFields", []))
+    assistant_confirmed_fields = _assistant_confirmed_fields(draft)
     messages: list[dict[str, Any]] = [
         {
             "role": "assistant",
@@ -448,9 +601,21 @@ def build_assistant_flow(draft) -> dict[str, Any]:
         break
 
     if not pending_field:
+        category_message = _build_assistant_category_message(draft)
+        if category_message and str(category_message.get("field") or "") not in assistant_confirmed_fields:
+            messages.append(category_message)
+            pending_field = str(category_message.get("field") or "")
+
+    if not pending_field:
+        aspect_message = _build_assistant_aspect_message(draft)
+        if aspect_message and str(aspect_message.get("field") or "") not in assistant_confirmed_fields:
+            messages.append(aspect_message)
+            pending_field = str(aspect_message.get("field") or "")
+
+    if not pending_field:
         messages.append({
             "role": "assistant",
-            "text": "Perfekt, die Kernangaben sind bestätigt. Du kannst jetzt unten noch Feinheiten anpassen oder direkt den eBay-Schritt vorbereiten.",
+            "text": "Perfekt, der Chat hat jetzt auch die eBay-relevanten Angaben zusammen. Du kannst unten nur noch optional feinjustieren oder direkt den eBay-Schritt vorbereiten.",
             "tone": "confirmed",
         })
 
@@ -586,6 +751,21 @@ async def upload_draft(
             await image.close()
 
     repository.save_draft(result.draft)
+    wants_json = "application/json" in str(request.headers.get("accept") or "")
+    if wants_json:
+        return JSONResponse(
+            {
+                "ok": True,
+                "draftId": result.draft.id,
+                "location": f"/drafts/{result.draft.id}",
+                "assistant": build_assistant_flow(result.draft),
+                "images": [
+                    {"name": image.original_filename, "url": f"/{image.storage_path}", "order": image.order}
+                    for image in result.draft.source.images
+                ],
+                "notes": result.draft.source.notes,
+            }
+        )
     return RedirectResponse(url=f"/drafts/{result.draft.id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -719,62 +899,71 @@ async def draft_assistant_message(request: Request, draft_id: str):
     action = str(payload.get("action") or "").strip()
     field = str(payload.get("field") or "").strip()
     value = str(payload.get("value") or "").strip()
-    if field not in ASSISTANT_FIELD_LABELS:
+    if field not in ASSISTANT_FIELD_LABELS and not field.startswith("ebay_aspect::"):
         raise HTTPException(status_code=400, detail="Ungültiges Feld")
 
     confirmed_fields = set(get_review_metadata(draft).get("confirmedFields", []))
+    assistant_confirmed_fields = _assistant_confirmed_fields(draft)
 
     if action == "confirm":
-        confirmed_fields.add(field)
+        if field in ASSISTANT_FIELD_LABELS:
+            confirmed_fields.add(field)
+        assistant_confirmed_fields.add(field)
         _append_assistant_event(draft, role="user", text="Super")
-        _append_assistant_event(draft, role="assistant", text=f"Alles klar, ich markiere {ASSISTANT_FIELD_LABELS[field].lower()} als bestätigt.")
-    elif action == "answer":
-        current_values = get_review_form_values(draft)
-        title = draft.listing.title
-        condition = draft.listing.condition
-        description = current_values["description"]
-        included_items = current_values["included_items"]
-        if field == "title":
-            title = value
-        elif field == "condition":
-            condition = value
-        elif field == "description_html":
-            description = value
-        elif field == "included_items":
-            included_items = value
-
-        confirmed_fields.add(field)
-        update_draft_from_review(
-            draft,
-            title=title,
-            condition=condition,
-            description=description,
-            included_items=included_items,
-            brand=draft.listing.brand,
-            model=draft.listing.model,
-            subtitle=draft.listing.subtitle,
-            category_suggestion=draft.listing.category_suggestion,
-            hints=current_values["hints"],
-            product_identifier_type=current_values["product_identifier_type"],
-            product_identifier_value=current_values["product_identifier_value"],
-            key_technical_details=current_values["key_technical_details"],
-            shipping_profile=get_selected_shipping_profile(draft),
-            confirm_fields=sorted(confirmed_fields),
-            action="confirm",
-        )
+        _append_assistant_event(draft, role="assistant", text=f"Alles klar, ich markiere {_assistant_field_label(field).lower()} als bestätigt.")
+    elif action in {"answer", "select"}:
+        if field == "category_suggestion":
+            draft.listing.category_suggestion = value
+            resolve_category_suggestion_for_draft(
+                draft,
+                settings,
+                preserve_numeric_id=bool(value and value.isdigit()),
+            )
+            autofill_ebay_required_aspects(draft, settings)
+        else:
+            _update_single_assistant_field(draft, field, value)
+            if field.startswith("ebay_aspect::"):
+                autofill_ebay_required_aspects(draft, settings)
+        if field in ASSISTANT_FIELD_LABELS:
+            confirmed_fields.add(field)
+        assistant_confirmed_fields.add(field)
         _append_assistant_event(draft, role="user", text=value)
-        _append_assistant_event(draft, role="assistant", text=f"Danke, ich habe {ASSISTANT_FIELD_LABELS[field].lower()} aktualisiert.")
+        _append_assistant_event(draft, role="assistant", text=f"Danke, ich habe {_assistant_field_label(field).lower()} aktualisiert.")
     elif action != "edit":
         raise HTTPException(status_code=400, detail="Ungültige Aktion")
 
-    if action == "confirm":
+    if action == "confirm" or field in ASSISTANT_FIELD_LABELS:
         draft.listing.attributes["review"] = {
             **get_review_metadata(draft),
             "confirmedFields": sorted(confirmed_fields),
         }
 
+    _set_assistant_confirmed_fields(draft, assistant_confirmed_fields)
+
     repository.save_draft(draft)
     return JSONResponse({"ok": True, **build_assistant_flow(draft)})
+
+
+@router.get("/drafts/{draft_id}/assistant/state")
+def draft_assistant_state(draft_id: str):
+    settings = get_settings()
+    repository = DraftRepository(settings.database_path)
+    draft = repository.get_draft(draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "draftId": draft.id,
+            "assistant": build_assistant_flow(draft),
+            "images": [
+                {"name": image.original_filename, "url": f"/{image.storage_path}", "order": image.order}
+                for image in draft.source.images
+            ],
+            "notes": draft.source.notes,
+        }
+    )
 
 
 @router.post("/drafts/{draft_id}/review", response_class=HTMLResponse)

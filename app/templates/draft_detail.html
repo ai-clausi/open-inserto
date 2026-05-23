@@ -545,6 +545,8 @@
   }
 
   const assistantFieldLabel = (field) => {
+    if (field === 'category_suggestion') return 'eBay-Kategorie';
+    if (field?.startsWith('ebay_aspect::')) return field.replace('ebay_aspect::', '');
     if (field === 'description_html') return 'Beschreibung';
     if (field === 'included_items') return 'Lieferumfang';
     if (field === 'condition') return 'Zustand';
@@ -577,6 +579,7 @@
           button.className = `inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold transition ${action.kind === 'edit' ? 'bg-white text-slate-950 hover:bg-slate-100' : 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300'}`;
           button.dataset.assistantAction = action.kind;
           button.dataset.assistantField = action.field;
+          if (action.value) button.dataset.assistantValue = action.value;
           button.textContent = action.label;
           row.appendChild(button);
         });
@@ -611,6 +614,7 @@
     if (!button) return;
     const action = button.dataset.assistantAction;
     const field = button.dataset.assistantField;
+    const value = button.dataset.assistantValue || '';
     if (action === 'edit') {
       assistantPendingField = field;
       assistantComposer?.removeAttribute('hidden');
@@ -618,7 +622,7 @@
       assistantInput?.focus();
       return;
     }
-    await sendAssistantAction({ action, field });
+    await sendAssistantAction({ action, field, value });
   });
 
   assistantComposer?.addEventListener('submit', async (event) => {

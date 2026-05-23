@@ -141,6 +141,8 @@
 
   let uploadStepMounted = false;
   let notesStepMounted = false;
+  let currentDraftId = null;
+  let assistantPendingField = '';
 
   const syncFileInput = (files) => {
     if (!realInput) return;
@@ -190,6 +192,75 @@
     chatThread.appendChild(node);
     revealNode(node);
     return node;
+  };
+
+  const sendAssistantAction = async (payload) => {
+    if (!currentDraftId) return;
+    const response = await fetch(`/drafts/${currentDraftId}/assistant/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    assistantPendingField = data.pendingField || '';
+    await renderAssistantMessages(data.messages || []);
+  };
+
+  const renderAssistantMessages = async (messages) => {
+    for (const message of messages) {
+      if (message.role === 'user') {
+        appendUserMessage(`<p>${message.text}</p>`);
+        continue;
+      }
+
+      await appendAssistantMessage(message.text, 650);
+      const lastNode = chatThread?.lastElementChild;
+      if (!lastNode || !Array.isArray(message.actions) || !message.actions.length) continue;
+
+      const row = document.createElement('div');
+      row.className = 'mt-4 flex flex-wrap gap-2';
+      message.actions.forEach((action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold transition ${action.kind === 'edit' ? 'bg-white text-slate-950 hover:bg-slate-100' : 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300'}`;
+        button.dataset.assistantAction = action.kind;
+        button.dataset.assistantField = action.field;
+        if (action.value) button.dataset.assistantValue = action.value;
+        button.textContent = action.label;
+        row.appendChild(button);
+      });
+      lastNode.appendChild(row);
+    }
+  };
+
+  const showAssistantComposer = (field) => {
+    const existing = document.querySelector('[data-inline-assistant-composer]');
+    existing?.remove();
+
+    const wrapper = document.createElement('article');
+    wrapper.className = 'ml-auto max-w-[92%] rounded-[1.75rem] rounded-tr-sm border border-emerald-100 bg-emerald-400 px-5 py-5 text-emerald-950 shadow-sm opacity-0 translate-y-4 transition duration-500';
+    wrapper.dataset.inlineAssistantComposer = 'true';
+    wrapper.innerHTML = `
+      <strong class="block text-sm font-semibold">Du</strong>
+      <div class="mt-4 grid gap-3">
+        <textarea class="min-h-24 w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm" placeholder="${field === 'category_suggestion' ? 'Kategorie oder Suchbegriff eingeben' : 'Antwort hier eingeben'}"></textarea>
+        <div class="flex justify-end gap-3">
+          <button class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white" type="button">Senden</button>
+        </div>
+      </div>
+    `;
+    const textarea = wrapper.querySelector('textarea');
+    const button = wrapper.querySelector('button');
+    button.addEventListener('click', async () => {
+      if (!textarea.value.trim()) return;
+      const value = textarea.value.trim();
+      wrapper.remove();
+      await sendAssistantAction({ action: 'answer', field, value });
+    });
+    chatThread.appendChild(wrapper);
+    revealNode(wrapper);
+    textarea?.focus();
   };
 
   const renderPreviews = (files, previewGrid) => {
@@ -271,12 +342,41 @@
       if (notesInput) notesInput.value = notesField.value;
     });
 
-    submitButton.addEventListener('click', () => {
+    submitButton.addEventListener('click', async () => {
+      const formData = new FormData(uploadForm);
       analysisOverlay?.classList.remove('hidden');
       analysisOverlay?.classList.add('flex');
       submitButton.disabled = true;
       submitButton.textContent = 'Analyse läuft ...';
-      uploadForm?.requestSubmit();
+
+      const response = await fetch('/drafts/upload', {
+        method: 'POST',
+        body: formData,
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!response.ok) {
+        analysisOverlay?.classList.add('hidden');
+        analysisOverlay?.classList.remove('flex');
+        submitButton.disabled = false;
+        submitButton.textContent = 'Bilder senden';
+        await appendAssistantMessage('Der Upload hat gerade nicht geklappt. Prüfe bitte die Bilder und versuche es nochmal.');
+        return;
+      }
+
+      const data = await response.json();
+      currentDraftId = data.draftId;
+      assistantPendingField = data.assistant?.pendingField || '';
+      if (data.location) {
+        window.history.replaceState({}, '', data.location);
+      }
+
+      analysisOverlay?.classList.add('hidden');
+      analysisOverlay?.classList.remove('flex');
+      await appendAssistantMessage('Alles klar, die Bilder sind jetzt hochgeladen und ich bleibe mit dir im selben Chat-Fenster.');
+      if (data.assistant?.messages?.length) {
+        await renderAssistantMessages(data.assistant.messages);
+      }
     });
 
     chatThread.appendChild(node);
@@ -337,6 +437,20 @@
       mountUploadCard();
     }, 240);
   };
+
+  document.body.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-assistant-action]');
+    if (!button) return;
+    const action = button.dataset.assistantAction;
+    const field = button.dataset.assistantField;
+    const value = button.dataset.assistantValue || '';
+    if (action === 'edit') {
+      assistantPendingField = field;
+      showAssistantComposer(field);
+      return;
+    }
+    await sendAssistantAction({ action, field, value });
+  });
 
   boot();
 </script>

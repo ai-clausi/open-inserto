@@ -105,6 +105,29 @@ def test_post_upload_creates_draft_and_files(client: TestClient):
     assert len(normalized) == 2
 
 
+def test_post_upload_can_continue_asynchronously_in_same_chat(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"notes": "Leichte Spuren", "product_name": "Testgerät", "condition": "gut"},
+        headers={"Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["draftId"].startswith("draft_")
+    assert payload["location"].startswith("/drafts/")
+    assert payload["assistant"]["messages"]
+    assert payload["images"][0]["name"] == "front.jpg"
+
+    assistant_state = client.get(f"/drafts/{payload['draftId']}/assistant/state")
+    assert assistant_state.status_code == 200
+    assert assistant_state.json()["ok"] is True
+
+
 def test_draft_detail_can_trigger_analysis_again_from_ui(client: TestClient, monkeypatch: pytest.MonkeyPatch):
     files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
     response = client.post(
@@ -180,6 +203,32 @@ def test_draft_detail_exposes_assistant_flow_and_accepts_async_reply(client: Tes
 
     updated_detail = client.get(location)
     assert "Apple iPhone 13" in updated_detail.text
+
+
+def test_draft_assistant_can_confirm_category_without_page_reload(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Kleine Lampe", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    draft_id = location.rsplit("/", 1)[-1]
+
+    assistant = client.post(
+        f"/drafts/{draft_id}/assistant/message",
+        json={"action": "answer", "field": "category_suggestion", "value": "12345"},
+    )
+
+    assert assistant.status_code == 200
+    payload = assistant.json()
+    assert payload["ok"] is True
+
+    state = client.get(f"/drafts/{draft_id}/assistant/state")
+    assert state.status_code == 200
+    assert state.json()["draftId"] == draft_id
 
 
 def test_post_upload_without_images_returns_validation_error(client: TestClient):
