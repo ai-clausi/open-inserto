@@ -3,93 +3,94 @@
 {% block title %}{{ app_name }} – Upload{% endblock %}
 
 {% block content %}
-<section class="mx-auto flex max-w-5xl flex-col gap-6 py-6 sm:py-10">
-  <div class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-soft">
-    <div class="border-b border-slate-200 bg-slate-950 px-5 py-5 text-white sm:px-8">
-      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Bilder hochladen</h1>
-      <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-        Starte einfach mit Fotos. Danach fragt dich der Assistent nur noch das, was für ein gutes Angebot wirklich noch fehlt.
-      </p>
-    </div>
-
-    <div class="space-y-5 bg-gradient-to-b from-slate-100/70 to-white px-4 py-5 sm:px-6 sm:py-6">
-      <article class="max-w-[90%] rounded-[1.75rem] rounded-tl-sm bg-slate-950 px-5 py-4 text-white shadow-soft">
-        <strong class="block text-xs uppercase tracking-[0.18em] text-emerald-200">Open Inserto</strong>
-        <p class="mt-2 text-sm leading-6 text-slate-100">Hi, lade zuerst deine Bilder hoch. Ich erkenne Produkt, Zustand und wichtige Merkmale und melde mich danach mit passenden Rückfragen oder Auswahlbuttons.</p>
-      </article>
-
-      {% if errors %}
-        <div class="max-w-[90%] rounded-[1.5rem] rounded-tl-sm border border-rose-200 bg-rose-50 px-5 py-4 text-rose-900 shadow-sm">
-          <strong class="block text-sm font-semibold">Upload fehlgeschlagen.</strong>
-          <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
-            {% for error in errors %}
-              <li>{{ error }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endif %}
-
-      <form class="space-y-5" method="post" action="/drafts/upload" enctype="multipart/form-data" data-assistant-upload-form>
-        <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm border border-slate-200 bg-white px-5 py-5 shadow-sm">
-          <strong class="block text-sm font-semibold text-slate-900">Open Inserto</strong>
-          <p class="mt-2 text-sm leading-6 text-slate-600">Schick mir die Fotos. Du kannst mehrere Bilder direkt auf einmal hochladen.</p>
-          <p class="mt-3 text-sm font-medium text-slate-900">Mehrfach-Upload mit Vorschau</p>
-
-          <label class="group mt-4 block rounded-[1.5rem] border border-dashed border-emerald-300 bg-emerald-50/70 p-6 transition hover:border-emerald-500 hover:bg-emerald-50" data-dropzone>
-            <input class="sr-only" type="file" name="images" accept="image/*,.heic,.heif" multiple required data-image-input>
-            <div class="flex flex-col items-center justify-center gap-3 text-center">
-              <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-emerald-100">📸</div>
-              <div>
-                <p class="text-base font-semibold text-slate-900">Dateien auswählen</p>
-                <p class="mt-1 text-sm text-slate-600">Oder Bilder einfach hier hineinziehen</p>
-              </div>
-              <div class="flex flex-wrap justify-center gap-2 text-xs text-slate-500">
-                <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Mindestens 1 Bild</span>
-                <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Maximal 20 Bilder</span>
-                <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Mindestens 500 px</span>
-              </div>
+<section class="mx-auto flex max-w-4xl flex-col py-0 sm:py-8">
+  <div class="overflow-hidden bg-transparent sm:rounded-[2rem] sm:border sm:border-slate-200 sm:bg-white sm:shadow-soft">
+    <div class="space-y-4 bg-gradient-to-b from-slate-100 via-slate-50 to-white px-0 py-4 sm:px-6 sm:py-6">
+      <div class="space-y-4" data-chat-sequence>
+        <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm bg-slate-950 px-5 py-4 text-white shadow-soft opacity-0 transition duration-500 data-[visible=true]:opacity-100" data-chat-step>
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-lg">✨</div>
+            <div>
+              <strong class="block text-sm font-semibold text-emerald-200">Open Inserto</strong>
+              <p class="text-xs text-slate-400">schreibt gerade</p>
             </div>
-          </label>
-
-          <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-preview-grid>
-            <p class="col-span-full rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">Noch keine Bilder ausgewählt.</p>
           </div>
+          <div class="mt-3 flex items-center gap-2 text-emerald-200" data-typing-indicator>
+            <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce [animation-delay:-0.3s]"></span>
+            <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce [animation-delay:-0.15s]"></span>
+            <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce"></span>
+          </div>
+          <p class="mt-3 hidden text-sm leading-6 text-slate-100" data-chat-text>Hi, lade zuerst deine Bilder hoch. Ich speichere sie erst einmal intern und gehe danach mit dir Schritt für Schritt durch die nächsten Infos.</p>
         </article>
 
-        <article class="ml-auto max-w-[92%] rounded-[1.75rem] rounded-tr-sm border border-emerald-100 bg-emerald-400 px-5 py-5 text-emerald-950 shadow-sm">
-          <strong class="block text-sm font-semibold">Du</strong>
-          <p class="mt-2 text-sm leading-6">Wenn du magst, gib mir direkt noch ein paar Hinweise mit. Das spart später Rückfragen.</p>
+        {% if errors %}
+          <div class="max-w-[92%] rounded-[1.5rem] rounded-tl-sm border border-rose-200 bg-rose-50 px-5 py-4 text-rose-900 shadow-sm">
+            <strong class="block text-sm font-semibold">Upload fehlgeschlagen.</strong>
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+              {% for error in errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
 
-          <div class="mt-4 grid gap-4">
-            <label class="block">
-              <span class="mb-2 block text-sm font-medium">Was soll ich über den Artikel schon wissen?</span>
-              <textarea class="min-h-28 w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" name="notes" rows="5" placeholder="Zustand, Auffälligkeiten, Preisidee, Fundort ...">{{ form_values.notes or '' }}</textarea>
+        <form class="space-y-4" method="post" action="/drafts/upload" enctype="multipart/form-data" data-assistant-upload-form>
+          <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm border border-slate-200 bg-white px-5 py-5 shadow-sm opacity-0 transition duration-500 data-[visible=true]:opacity-100" data-chat-step>
+            <strong class="block text-sm font-semibold text-slate-900">Open Inserto</strong>
+            <p class="mt-2 text-sm leading-6 text-slate-600">Schick mir jetzt die Fotos. Wichtig: Die Bilder werden hier erst einmal nur hochgeladen, noch nicht direkt analysiert.</p>
+
+            <label class="group mt-4 block rounded-[1.5rem] border border-dashed border-emerald-300 bg-emerald-50/70 p-6 transition hover:border-emerald-500 hover:bg-emerald-50" data-dropzone>
+              <input class="sr-only" type="file" name="images" accept="image/*,.heic,.heif" multiple required data-image-input>
+              <div class="flex flex-col items-center justify-center gap-3 text-center">
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl shadow-sm ring-1 ring-emerald-100">📸</div>
+                <div>
+                  <p class="text-base font-semibold text-slate-900">Bilder hochladen</p>
+                  <p class="mt-1 text-sm text-slate-600">Oder Bilder einfach hier hineinziehen</p>
+                </div>
+                <div class="flex flex-wrap justify-center gap-2 text-xs text-slate-500">
+                  <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Mindestens 1 Bild</span>
+                  <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Maximal 20 Bilder</span>
+                  <span class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">Mindestens 500 px</span>
+                </div>
+              </div>
             </label>
 
-            <div class="grid gap-4 md:grid-cols-2">
-              {% for field_name, field_label in extra_fields %}
-                <label class="block">
-                  <span class="mb-2 block text-sm font-medium">{{ field_label }}</span>
-                  <input class="w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" type="text" name="{{ field_name }}" value="{{ form_values[field_name] if field_name in form_values else '' }}" placeholder="{{ field_label }}">
-                </label>
-              {% endfor %}
+            <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-preview-grid>
+              <p class="col-span-full rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">Noch keine Bilder ausgewählt.</p>
             </div>
-          </div>
-        </article>
+          </article>
 
-        <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm bg-slate-950 px-5 py-5 text-white shadow-soft">
-          <strong class="block text-sm font-semibold text-emerald-200">Open Inserto</strong>
-          <p class="mt-2 text-sm leading-6 text-slate-100">Sobald du auf <strong>Draft erstellen</strong> tippst, starte ich direkt mit der Analyse und öffne danach den Gesprächsverlauf für die nächsten Fragen.</p>
-          <div class="mt-4 flex items-center gap-3 text-sm text-slate-300">
-            <span class="relative flex h-3 w-3">
-              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-75"></span>
-              <span class="relative inline-flex h-3 w-3 rounded-full bg-emerald-300"></span>
-            </span>
-            <span>Sichtbare Analyse statt leerer Wartezeit</span>
-          </div>
-          <button class="mt-5 inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300" type="submit" data-submit-button>Draft erstellen</button>
-        </article>
-      </form>
+          <article class="max-w-[92%] rounded-[1.75rem] rounded-tl-sm bg-slate-950 px-5 py-5 text-white shadow-soft opacity-0 transition duration-500 data-[visible=true]:opacity-100" data-chat-step>
+            <strong class="block text-sm font-semibold text-emerald-200">Open Inserto</strong>
+            <p class="mt-2 text-sm leading-6 text-slate-100">Wenn du magst, gib mir direkt noch ein paar Hinweise mit. Das spart später Rückfragen.</p>
+          </article>
+
+          <article class="ml-auto max-w-[92%] rounded-[1.75rem] rounded-tr-sm border border-emerald-100 bg-emerald-400 px-5 py-5 text-emerald-950 shadow-sm opacity-0 transition duration-500 data-[visible=true]:opacity-100" data-chat-step>
+            <strong class="block text-sm font-semibold">Du</strong>
+
+            <div class="mt-4 grid gap-4">
+              <label class="block">
+                <span class="mb-2 block text-sm font-medium">Was soll ich über den Artikel schon wissen?</span>
+                <textarea class="min-h-28 w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" name="notes" rows="5" placeholder="Zustand, Auffälligkeiten, Preisidee, Fundort ...">{{ form_values.notes or '' }}</textarea>
+              </label>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                {% for field_name, field_label in extra_fields %}
+                  <label class="block">
+                    <span class="mb-2 block text-sm font-medium">{{ field_label }}</span>
+                    <input class="w-full rounded-2xl border-emerald-200 bg-white/90 px-4 py-3 text-sm text-slate-900 shadow-sm focus:border-emerald-600 focus:ring-emerald-600" type="text" name="{{ field_name }}" value="{{ form_values[field_name] if field_name in form_values else '' }}" placeholder="{{ field_label }}">
+                  </label>
+                {% endfor %}
+              </div>
+
+              <div class="flex flex-wrap items-center justify-end gap-3">
+                <span class="text-sm text-emerald-900/80">Antwort wird zusammen mit deinen Bildern gesendet.</span>
+                <button class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-950/30" type="submit" data-submit-button>Bilder senden</button>
+              </div>
+            </div>
+          </article>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -129,6 +130,23 @@
   const analysisOverlay = document.querySelector('[data-analysis-overlay]');
   const submitButton = document.querySelector('[data-submit-button]');
 
+  const revealChat = () => {
+    const steps = document.querySelectorAll('[data-chat-step]');
+    steps.forEach((step, index) => {
+      window.setTimeout(() => {
+        step.dataset.visible = 'true';
+        const typingIndicator = step.querySelector('[data-typing-indicator]');
+        const text = step.querySelector('[data-chat-text]');
+        if (typingIndicator && text) {
+          window.setTimeout(() => {
+            typingIndicator.classList.add('hidden');
+            text.classList.remove('hidden');
+          }, 900);
+        }
+      }, index * 260);
+    });
+  };
+
   const renderPreviews = () => {
     const files = Array.from(input.files || []);
     if (!files.length) {
@@ -158,7 +176,7 @@
 
       const badge = document.createElement('span');
       badge.className = 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-medium text-emerald-800';
-      badge.textContent = 'Bereit';
+      badge.textContent = 'Hochgeladen';
       header.appendChild(badge);
       item.appendChild(header);
 
@@ -175,6 +193,7 @@
     });
   };
 
+  revealChat();
   input?.addEventListener('change', renderPreviews);
 
   ['dragenter', 'dragover'].forEach((eventName) => {

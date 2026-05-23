@@ -55,8 +55,10 @@ def test_upload_page_renders(client: TestClient):
     response = client.get("/drafts/upload")
 
     assert response.status_code == 200
-    assert "Mehrfach-Upload mit Vorschau" in response.text
-    assert "Draft erstellen" in response.text
+    assert "Hi, lade zuerst deine Bilder hoch." in response.text
+    assert "Bilder werden hier erst einmal nur hochgeladen" in response.text
+    assert "Wenn du magst, gib mir direkt noch ein paar Hinweise mit." in response.text
+    assert "Bilder senden" in response.text
 
 
 def test_post_upload_creates_draft_and_files(client: TestClient):
