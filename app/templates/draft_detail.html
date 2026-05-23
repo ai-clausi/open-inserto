@@ -105,15 +105,26 @@
   </section>
 {% endif %}
 
-<section class="card assistant-workflow" id="assistant-flow" data-assistant-flow data-draft-id="{{ draft.id }}">
+<section class="card assistant-workflow border border-emerald-100 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white shadow-soft" id="assistant-flow" data-assistant-flow data-draft-id="{{ draft.id }}">
   <div class="section-head section-head--compact">
     <div>
-      <p class="eyebrow">Assistenten-Flow</p>
-      <h2>Chat-artige Rückfragen ohne Reload</h2>
+      <p class="eyebrow text-emerald-200">Assistenten-Flow</p>
+      <h2 class="text-white">Chat-artige Rückfragen ohne Reload</h2>
     </div>
-    <span class="status-chip status-chip--muted">Beta</span>
+    <span class="status-chip status-chip--muted border-white/10 bg-white/10 text-white">Beta</span>
   </div>
-  <p class="section-copy">Der Assistent bestätigt erkannte Angaben direkt im Verlauf und fragt fehlende Kerninfos schrittweise nach.</p>
+  <p class="section-copy text-slate-200">Der Assistent bestätigt erkannte Angaben direkt im Verlauf, zeigt eine sichtbare Analysephase und fragt fehlende Kerninfos schrittweise nach.</p>
+  <div class="mb-5 flex items-center gap-4 rounded-3xl border border-white/10 bg-white/5 px-4 py-4">
+    <div class="relative h-12 w-12 shrink-0">
+      <span class="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping"></span>
+      <span class="absolute inset-1 rounded-full bg-emerald-400/30 animate-pulse"></span>
+      <span class="absolute inset-[10px] rounded-full bg-emerald-400"></span>
+    </div>
+    <div>
+      <p class="text-sm font-semibold text-white">AI-Analyse aktiv</p>
+      <p class="text-sm text-slate-300">Erkannte Angaben werden im Gespräch bestätigt oder direkt korrigiert.</p>
+    </div>
+  </div>
   <div class="assistant-thread" data-assistant-thread>
     {% for message in assistant_flow.messages %}
       <article class="assistant-bubble assistant-bubble--{{ 'user' if message.role == 'user' else 'assistant' }}{% if message.tone == 'confirmed' %} assistant-bubble--confirmed{% endif %}">
@@ -129,10 +140,10 @@
       </article>
     {% endfor %}
   </div>
-  <form class="assistant-composer" data-assistant-composer hidden>
+  <form class="assistant-composer rounded-3xl border border-white/10 bg-white/5 p-4" data-assistant-composer hidden>
     <label class="field field--full">
-      <span data-assistant-prompt>Antwort</span>
-      <textarea name="value" rows="3" placeholder="Antwort hier eingeben"></textarea>
+      <span class="text-slate-100" data-assistant-prompt>Antwort</span>
+      <textarea class="rounded-2xl border-white/10 bg-slate-950 text-white placeholder:text-slate-400" name="value" rows="3" placeholder="Antwort hier eingeben"></textarea>
     </label>
     <div class="button-row button-row--single">
       <button class="button button--primary" type="submit">Antwort senden</button>

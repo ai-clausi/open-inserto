@@ -11,6 +11,31 @@
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', path='/favicon/favicon-16x16.png') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', path='/favicon/apple-touch-icon.png') }}">
     <link rel="manifest" href="{{ url_for('static', path='/favicon/site.webmanifest') }}">
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: '#ecfdf5',
+                100: '#d1fae5',
+                500: '#16a34a',
+                600: '#15803d',
+                700: '#166534',
+                950: '#052e16'
+              }
+            },
+            boxShadow: {
+              soft: '0 20px 45px rgba(15, 23, 42, 0.08)'
+            },
+            animation: {
+              'pulse-soft': 'pulse 2.2s ease-in-out infinite'
+            }
+          }
+        }
+      }
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', path='/css/app.css') }}">
   </head>
   <body>
