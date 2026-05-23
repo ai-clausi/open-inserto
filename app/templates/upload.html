@@ -142,7 +142,24 @@
   let uploadStepMounted = false;
   let notesStepMounted = false;
   let currentDraftId = null;
+  let currentDraftLocation = '';
   let assistantPendingField = '';
+
+  const escapeHtml = (value) => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  const assistantFieldCurrentValue = (field) => {
+    if (field === 'title') return uploadForm?.querySelector('[data-extra-input="product_name"]')?.value || '';
+    if (field === 'condition') return uploadForm?.querySelector('[data-extra-input="condition"]')?.value || '';
+    if (field === 'included_items') return uploadForm?.querySelector('[data-extra-input="accessories"]')?.value || '';
+    if (field === 'description_html') return notesInput?.value || '';
+    if (field === 'category_suggestion') return '';
+    return '';
+  };
 
   const syncFileInput = (files) => {
     if (!realInput) return;
@@ -208,9 +225,11 @@
   };
 
   const renderAssistantMessages = async (messages) => {
+    chatThread?.querySelectorAll('[data-assistant-actions]').forEach((node) => node.remove());
+
     for (const message of messages) {
       if (message.role === 'user') {
-        appendUserMessage(`<p>${message.text}</p>`);
+        appendUserMessage(`<p>${escapeHtml(message.text)}</p>`);
         continue;
       }
 
@@ -220,7 +239,17 @@
 
       const row = document.createElement('div');
       row.className = 'mt-4 flex flex-wrap gap-2';
+      row.dataset.assistantActions = 'true';
       message.actions.forEach((action) => {
+        if (action.kind === 'link' && action.href) {
+          const link = document.createElement('a');
+          const targetExists = action.href.startsWith('#') && document.querySelector(action.href);
+          link.href = targetExists ? action.href : `${currentDraftLocation || `/drafts/${currentDraftId || ''}`}${action.href}`;
+          link.className = 'inline-flex items-center justify-center rounded-2xl bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-300';
+          link.textContent = action.label;
+          row.appendChild(link);
+          return;
+        }
         const button = document.createElement('button');
         button.type = 'button';
         button.className = `inline-flex items-center justify-center rounded-2xl px-4 py-2 text-sm font-semibold transition ${action.kind === 'edit' ? 'bg-white text-slate-950 hover:bg-slate-100' : 'bg-emerald-400 text-emerald-950 hover:bg-emerald-300'}`;
@@ -251,6 +280,7 @@
       </div>
     `;
     const textarea = wrapper.querySelector('textarea');
+    textarea.value = assistantFieldCurrentValue(field);
     const button = wrapper.querySelector('button');
     button.addEventListener('click', async () => {
       if (!textarea.value.trim()) return;
@@ -366,6 +396,7 @@
 
       const data = await response.json();
       currentDraftId = data.draftId;
+      currentDraftLocation = data.location || `/drafts/${data.draftId}`;
       assistantPendingField = data.assistant?.pendingField || '';
       if (data.location) {
         window.history.replaceState({}, '', data.location);

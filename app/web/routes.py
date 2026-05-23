@@ -1,4 +1,3 @@
-from html import unescape
 from pathlib import Path
 import re
 from dataclasses import dataclass
@@ -421,11 +420,17 @@ def _assistant_field_value(draft, field: str) -> str:
     if field == "condition":
         return draft.listing.condition.strip()
     if field == "included_items":
-        return "\n".join(item.strip() for item in draft.listing.included_items if item.strip())
+        items = [item.strip() for item in draft.listing.included_items if item.strip()]
+        if len(items) == 1 and _dedupe_text(items[0]) == _dedupe_text(draft.listing.title):
+            return ""
+        return "\n".join(items)
     if field == "description_html":
-        plain = re.sub(r"<[^>]+>", " ", draft.listing.description_html or "")
-        return re.sub(r"\s+", " ", unescape(plain)).strip()
+        return draft.source.notes.strip()
     return ""
+
+
+def _dedupe_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9äöüß]+", " ", value.casefold()).strip()
 
 
 def _assistant_field_label(field: str) -> str:
@@ -941,6 +946,7 @@ async def draft_assistant_message(request: Request, draft_id: str):
         _append_assistant_event(draft, role="user", text="Super")
         _append_assistant_event(draft, role="assistant", text=f"Alles klar, { _assistant_field_label(field) } ist übernommen.")
     elif action in {"answer", "select"}:
+        field_completed = True
         if field == "category_suggestion":
             draft.listing.category_suggestion = value
             resolve_category_suggestion_for_draft(
@@ -949,6 +955,10 @@ async def draft_assistant_message(request: Request, draft_id: str):
                 preserve_numeric_id=bool(value and value.isdigit()),
             )
             autofill_ebay_required_aspects(draft, settings)
+            category_resolution = get_category_resolution(draft)
+            category_state = str(category_resolution.get("state") or "")
+            selected_id = str(category_resolution.get("selected_id") or draft.listing.category_suggestion or "").strip()
+            field_completed = bool(selected_id) and category_state not in {"needs_selection", "no_match", "lookup_failed", "config_missing", "empty"}
         else:
             _update_single_assistant_field(draft, field, value)
             if field == "title":
@@ -956,11 +966,17 @@ async def draft_assistant_message(request: Request, draft_id: str):
                 autofill_ebay_required_aspects(draft, settings)
             if field.startswith("ebay_aspect::"):
                 autofill_ebay_required_aspects(draft, settings)
-        if field in ASSISTANT_FIELD_LABELS:
+        if field_completed and field in ASSISTANT_FIELD_LABELS:
             confirmed_fields.add(field)
-        assistant_confirmed_fields.add(field)
+        if field_completed:
+            assistant_confirmed_fields.add(field)
+        else:
+            assistant_confirmed_fields.discard(field)
         _append_assistant_event(draft, role="user", text=value)
-        _append_assistant_event(draft, role="assistant", text=f"Danke, ich habe { _assistant_field_label(field) } aktualisiert.")
+        if field == "category_suggestion" and not field_completed:
+            _append_assistant_event(draft, role="assistant", text="Ich habe dazu neue eBay-Kategorievorschläge gesucht.")
+        else:
+            _append_assistant_event(draft, role="assistant", text=f"Danke, ich habe { _assistant_field_label(field) } aktualisiert.")
     elif action != "edit":
         raise HTTPException(status_code=400, detail="Ungültige Aktion")
 
