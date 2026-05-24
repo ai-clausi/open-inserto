@@ -363,6 +363,16 @@ ASSISTANT_FIELD_LABELS = {
 }
 
 
+ASSISTANT_PLACEHOLDER_VALUES = {
+    "",
+    "unbekannt",
+    "unknown",
+    "n/a",
+    "keine angabe",
+    "nicht erkannt",
+}
+
+
 def _assistant_flow_state(draft) -> dict[str, Any]:
     state = draft.listing.attributes.get("assistantFlow")
     return state if isinstance(state, dict) else {}
@@ -452,6 +462,26 @@ def _assistant_field_prompt(field: str) -> str:
     if field.startswith("ebay_aspect::"):
         return f"Für eBay fehlt noch { _assistant_aspect_name(field) }."
     return prompts.get(field, f"Bitte bestätige { _assistant_field_label(field).lower() }.")
+
+
+def _assistant_value_is_placeholder(value: str) -> bool:
+    normalized = value.strip().casefold()
+    if normalized in ASSISTANT_PLACEHOLDER_VALUES:
+        return True
+    return normalized.startswith("unbekannt ") or normalized.endswith(" unbekannt")
+
+
+def _assistant_response_field_values(draft) -> dict[str, str]:
+    review_values = get_review_form_values(draft)
+    category_resolution = get_category_resolution(draft)
+    return {
+        "title": draft.listing.title.strip(),
+        "condition": draft.listing.condition.strip(),
+        "included_items": review_values["included_items"],
+        "description_html": review_values["description"],
+        "category_suggestion": str(category_resolution.get("selected_name") or draft.listing.category_suggestion or "").strip(),
+        "category_suggestion_id": str(category_resolution.get("selected_id") or draft.listing.category_suggestion or "").strip(),
+    }
 
 
 def _update_single_assistant_field(draft, field: str, value: str) -> None:
@@ -602,6 +632,8 @@ def build_assistant_flow(draft) -> dict[str, Any]:
     pending_field = ""
     for field in ("title", "condition", "included_items", "description_html"):
         value = _assistant_field_value(draft, field)
+        if _assistant_value_is_placeholder(value):
+            value = ""
         label = ASSISTANT_FIELD_LABELS[field]
         if value and field in confirmed_fields:
             messages.append({
@@ -611,9 +643,10 @@ def build_assistant_flow(draft) -> dict[str, Any]:
             })
             continue
         if value:
+            value_text = value.strip() if field == "description_html" else value.splitlines()[0]
             messages.append({
                 "role": "assistant",
-                "text": f"{_assistant_field_prompt(field)}\n\n{value.splitlines()[0]}",
+                "text": f"{_assistant_field_prompt(field)}\n\n{value_text}",
                 "field": field,
                 "actions": [
                     {"kind": "confirm", "label": "Super", "field": field},
@@ -653,7 +686,12 @@ def build_assistant_flow(draft) -> dict[str, Any]:
             "tone": "confirmed",
         })
 
-    return {"messages": messages, "pendingField": pending_field, "fieldLabels": ASSISTANT_FIELD_LABELS}
+    return {
+        "messages": messages,
+        "pendingField": pending_field,
+        "fieldLabels": ASSISTANT_FIELD_LABELS,
+        "fieldValues": _assistant_response_field_values(draft),
+    }
 
 
 @router.get("/health")
@@ -962,6 +1000,9 @@ async def draft_assistant_message(request: Request, draft_id: str):
         else:
             _update_single_assistant_field(draft, field, value)
             if field == "title":
+                current_items = [item.strip() for item in draft.listing.included_items if item.strip()]
+                if len(current_items) == 1 and _dedupe_text(current_items[0]) == _dedupe_text(value):
+                    draft.listing.included_items = []
                 resolve_category_suggestion_for_draft(draft, settings)
                 autofill_ebay_required_aspects(draft, settings)
             if field.startswith("ebay_aspect::"):

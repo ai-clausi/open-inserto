@@ -226,9 +226,54 @@ def test_draft_assistant_uses_updated_title_for_follow_up_steps(client: TestClie
     assert payload["ok"] is True
     assert any("Produktname aktualisiert" in message["text"] for message in payload["messages"])
     assert any("DALI Rubikore 6 + DALI Rubikore Cinema" in message["text"] for message in payload["messages"])
+    assert payload["fieldValues"]["title"] == "DALI Rubikore 6 + DALI Rubikore Cinema"
 
     updated_detail = client.get(location)
     assert "DALI Rubikore 6 + DALI Rubikore Cinema" in updated_detail.text
+
+
+def test_draft_assistant_does_not_keep_product_title_as_only_included_item(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Jurassic World T-Rex Spielzeugfigur", "condition": "neu", "notes": "Mattel Figur"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+
+    assistant = client.post(
+        f"{location}/assistant/message",
+        json={"action": "answer", "field": "title", "value": "Jurassic World T-Rex Spielzeugfigur"},
+    )
+
+    assert assistant.status_code == 200
+    payload = assistant.json()
+    assert payload["ok"] is True
+    assert not any("Was gehört alles zum Lieferumfang?\n\nJurassic World T-Rex Spielzeugfigur" == message["text"] for message in payload["messages"])
+
+
+def test_draft_assistant_treats_unknown_values_as_unanswered(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Porsche 911 Carrera S Cabriolet", "condition": "unbekannt", "notes": "Modellauto"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    client.post(
+        f"{location}/assistant/message",
+        json={"action": "confirm", "field": "title"},
+    )
+
+    state = client.get(f"{location}/assistant/state")
+    payload = state.json()["assistant"]
+    assert payload["pendingField"] == "condition"
+    condition_message = next(message for message in payload["messages"] if message.get("field") == "condition")
+    assert condition_message["text"] == "Welchen Zustand soll ich festhalten?"
 
 
 def test_draft_assistant_can_confirm_category_without_page_reload(client: TestClient):

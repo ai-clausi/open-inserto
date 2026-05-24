@@ -73,7 +73,7 @@
       <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce [animation-delay:-0.15s]"></span>
       <span class="h-2.5 w-2.5 rounded-full bg-current animate-bounce"></span>
     </div>
-    <p class="mt-3 hidden text-sm leading-6 text-slate-100" data-chat-text></p>
+    <p class="mt-3 hidden whitespace-pre-line text-sm leading-6 text-slate-100" data-chat-text></p>
   </article>
 </template>
 
@@ -144,6 +144,22 @@
   let currentDraftId = null;
   let currentDraftLocation = '';
   let assistantPendingField = '';
+  let assistantFieldValues = {};
+
+  const messageSignature = (message) => JSON.stringify({
+    role: message.role,
+    text: message.text,
+    tone: message.tone || '',
+    actions: Array.isArray(message.actions)
+      ? message.actions.map((action) => ({
+          kind: action.kind,
+          label: action.label,
+          field: action.field || '',
+          value: action.value || '',
+          href: action.href || '',
+        }))
+      : [],
+  });
 
   const escapeHtml = (value) => String(value || '')
     .replace(/&/g, '&amp;')
@@ -153,11 +169,12 @@
     .replace(/'/g, '&#039;');
 
   const assistantFieldCurrentValue = (field) => {
+    if (assistantFieldValues[field]) return assistantFieldValues[field];
     if (field === 'title') return uploadForm?.querySelector('[data-extra-input="product_name"]')?.value || '';
     if (field === 'condition') return uploadForm?.querySelector('[data-extra-input="condition"]')?.value || '';
     if (field === 'included_items') return uploadForm?.querySelector('[data-extra-input="accessories"]')?.value || '';
     if (field === 'description_html') return notesInput?.value || '';
-    if (field === 'category_suggestion') return '';
+    if (field === 'category_suggestion') return assistantFieldValues.category_suggestion_id || assistantFieldValues.category_suggestion || '';
     return '';
   };
 
@@ -221,21 +238,38 @@
     if (!response.ok) return;
     const data = await response.json();
     assistantPendingField = data.pendingField || '';
+    assistantFieldValues = data.fieldValues || assistantFieldValues;
     await renderAssistantMessages(data.messages || []);
   };
 
   const renderAssistantMessages = async (messages) => {
-    chatThread?.querySelectorAll('[data-assistant-actions]').forEach((node) => node.remove());
+    const renderedNodes = Array.from(chatThread?.querySelectorAll('[data-chat-node]') || []);
+    const renderedSignatures = renderedNodes.map((node) => node.dataset.messageSignature || '');
+    const nextSignatures = messages.map((message) => messageSignature(message));
 
-    for (const message of messages) {
+    let prefixLength = 0;
+    while (
+      prefixLength < renderedSignatures.length &&
+      prefixLength < nextSignatures.length &&
+      renderedSignatures[prefixLength] === nextSignatures[prefixLength]
+    ) {
+      prefixLength += 1;
+    }
+
+    renderedNodes.forEach((node, index) => {
+      if (index >= prefixLength) node.remove();
+    });
+
+    for (const message of messages.slice(prefixLength)) {
+      let node;
       if (message.role === 'user') {
-        appendUserMessage(`<p>${escapeHtml(message.text)}</p>`);
-        continue;
+        node = appendUserMessage(`<p>${escapeHtml(message.text)}</p>`);
+      } else {
+        node = await appendAssistantMessage(message.text, 650);
       }
-
-      await appendAssistantMessage(message.text, 650);
-      const lastNode = chatThread?.lastElementChild;
-      if (!lastNode || !Array.isArray(message.actions) || !message.actions.length) continue;
+      node.dataset.chatNode = 'true';
+      node.dataset.messageSignature = messageSignature(message);
+      if (message.role === 'user' || !Array.isArray(message.actions) || !message.actions.length) continue;
 
       const row = document.createElement('div');
       row.className = 'mt-4 flex flex-wrap gap-2';
@@ -259,7 +293,7 @@
         button.textContent = action.label;
         row.appendChild(button);
       });
-      lastNode.appendChild(row);
+      node.appendChild(row);
     }
   };
 
@@ -398,9 +432,14 @@
       currentDraftId = data.draftId;
       currentDraftLocation = data.location || `/drafts/${data.draftId}`;
       assistantPendingField = data.assistant?.pendingField || '';
+      assistantFieldValues = data.assistant?.fieldValues || {};
       if (data.location) {
         window.history.replaceState({}, '', data.location);
       }
+
+      node.remove();
+      document.querySelector('[data-inline-assistant-composer]')?.remove();
+      document.querySelector('[data-dropzone]')?.closest('article')?.remove();
 
       analysisOverlay?.classList.add('hidden');
       analysisOverlay?.classList.remove('flex');
