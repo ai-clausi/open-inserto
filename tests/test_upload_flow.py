@@ -232,6 +232,32 @@ def test_draft_assistant_uses_updated_title_for_follow_up_steps(client: TestClie
     assert "DALI Rubikore 6 + DALI Rubikore Cinema" in updated_detail.text
 
 
+def test_draft_assistant_keeps_confirmed_messages_stable_without_replaying_old_prompts(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "iPhone", "condition": "gut", "notes": "Leichte Spuren", "accessories": "Ladekabel"},
+        headers={"Accept": "application/json"},
+    )
+
+    draft_id = response.json()["draftId"]
+    first_state = client.get(f"/drafts/{draft_id}/assistant/state").json()["assistant"]
+    first_title_prompts = [message for message in first_state["messages"] if "Ich habe einen Produktnamen erkannt." in message["text"]]
+    assert len(first_title_prompts) == 1
+
+    reply = client.post(
+        f"/drafts/{draft_id}/assistant/message",
+        json={"action": "confirm", "field": "title"},
+    )
+
+    assert reply.status_code == 200
+    payload = reply.json()
+    assert sum(1 for message in payload["messages"] if "Ich habe einen Produktnamen erkannt." in message["text"]) == 0
+    assert any(message["text"] == "Alles klar, Produktname ist übernommen." for message in payload["messages"])
+    assert any(message["text"].startswith("Welchen Zustand soll ich festhalten?") for message in payload["messages"])
+
+
 def test_draft_assistant_does_not_keep_product_title_as_only_included_item(client: TestClient):
     files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
     response = client.post(
@@ -252,6 +278,39 @@ def test_draft_assistant_does_not_keep_product_title_as_only_included_item(clien
     payload = assistant.json()
     assert payload["ok"] is True
     assert not any("Was gehört alles zum Lieferumfang?\n\nJurassic World T-Rex Spielzeugfigur" == message["text"] for message in payload["messages"])
+
+
+def test_draft_assistant_uses_current_description_text_for_prefill_and_prompt(client: TestClient):
+    files = [("images", ("front.jpg", build_image_bytes(image_format="JPEG"), "image/jpeg"))]
+    response = client.post(
+        "/drafts/upload",
+        files=files,
+        data={"product_name": "Lampe", "condition": "gut", "notes": "Erste Notiz", "accessories": "Kabel"},
+        follow_redirects=False,
+    )
+
+    location = response.headers["location"]
+    client.post(
+        f"{location}/review",
+        data={
+            "title": "Lampe",
+            "condition": "gut",
+            "description": "Neue Beschreibung\nmit Absatz",
+            "included_items": "Kabel",
+            "action": "save",
+        },
+        follow_redirects=False,
+    )
+    client.post(f"{location}/assistant/message", json={"action": "confirm", "field": "title"})
+    client.post(f"{location}/assistant/message", json={"action": "confirm", "field": "condition"})
+    client.post(f"{location}/assistant/message", json={"action": "confirm", "field": "included_items"})
+
+    state = client.get(f"{location}/assistant/state")
+    payload = state.json()["assistant"]
+    description_message = next(message for message in payload["messages"] if message.get("field") == "description_html")
+    assert "Beschreibungsvorschlag:" in description_message["text"]
+    assert "Neue Beschreibung\nmit Absatz" in description_message["text"]
+    assert payload["fieldValues"]["description_html"] == "Neue Beschreibung\nmit Absatz"
 
 
 def test_draft_assistant_treats_unknown_values_as_unanswered(client: TestClient):

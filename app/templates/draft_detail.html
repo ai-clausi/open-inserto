@@ -536,6 +536,7 @@
   const assistantInput = assistantComposer?.querySelector('textarea[name="value"]');
   const draftId = '{{ draft.id }}';
   let assistantPendingField = '{{ assistant_flow.pendingField }}';
+  let assistantFieldValues = {{ assistant_flow.fieldValues | tojson }};
 
   function scrollThreadToBottom(behavior = 'smooth') {
     assistantThread?.lastElementChild?.scrollIntoView({ behavior, block: 'end' });
@@ -576,12 +577,12 @@
   };
 
   const assistantFieldCurrentValue = (field) => {
-    if (field === 'title') return document.querySelector('#title')?.value || '';
-    if (field === 'condition') return document.querySelector('#condition')?.value || '';
-    if (field === 'included_items') return document.querySelector('#included_items')?.value || '';
-    if (field === 'description_html') return document.querySelector('#description')?.value || '';
+    if (field === 'title') return assistantFieldValues.title || document.querySelector('#title')?.value || '';
+    if (field === 'condition') return assistantFieldValues.condition || document.querySelector('#condition')?.value || '';
+    if (field === 'included_items') return assistantFieldValues.included_items || document.querySelector('#included_items')?.value || '';
+    if (field === 'description_html') return assistantFieldValues.description_html || document.querySelector('#description')?.value || '';
     if (field === 'category_suggestion') {
-      return document.querySelector('#category_search_query')?.value || document.querySelector('#category_suggestion')?.value || '';
+      return assistantFieldValues.category_suggestion || assistantFieldValues.category_suggestion_id || document.querySelector('#category_search_query')?.value || document.querySelector('#category_suggestion')?.value || '';
     }
     if (field?.startsWith('ebay_aspect::')) {
       const aspectName = field.replace('ebay_aspect::', '');
@@ -590,6 +591,34 @@
     }
     return '';
   };
+
+  function syncAssistantFieldValues(fieldValues) {
+    assistantFieldValues = fieldValues || assistantFieldValues;
+    if (assistantFieldValues.title !== undefined) {
+      const input = document.querySelector('#title');
+      if (input) input.value = assistantFieldValues.title || '';
+    }
+    if (assistantFieldValues.condition !== undefined) {
+      const input = document.querySelector('#condition');
+      if (input) input.value = assistantFieldValues.condition || '';
+    }
+    if (assistantFieldValues.included_items !== undefined) {
+      const input = document.querySelector('#included_items');
+      if (input) input.value = assistantFieldValues.included_items || '';
+    }
+    if (assistantFieldValues.description_html !== undefined) {
+      const input = document.querySelector('#description');
+      if (input) input.value = assistantFieldValues.description_html || '';
+    }
+    if (assistantFieldValues.category_suggestion !== undefined) {
+      const searchInput = document.querySelector('#category_search_query');
+      if (searchInput && assistantFieldValues.category_suggestion) searchInput.value = assistantFieldValues.category_suggestion;
+    }
+    if (assistantFieldValues.category_suggestion_id !== undefined) {
+      const categoryInput = document.querySelector('#category_suggestion');
+      if (categoryInput) categoryInput.value = assistantFieldValues.category_suggestion_id || '';
+    }
+  }
 
   const renderAssistantMessages = (messages) => {
     if (!assistantThread) return;
@@ -671,6 +700,7 @@
     if (!response.ok) return;
     const data = await response.json();
     assistantPendingField = data.pendingField || '';
+    syncAssistantFieldValues(data.fieldValues || {});
     clearAssistantActions();
     renderAssistantMessages(data.messages || []);
     if (!assistantPendingField) {

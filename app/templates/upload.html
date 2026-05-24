@@ -170,6 +170,8 @@
 
   const assistantFieldCurrentValue = (field) => {
     if (assistantFieldValues[field]) return assistantFieldValues[field];
+    if (field === 'included_items' && assistantFieldValues.included_items) return assistantFieldValues.included_items;
+    if (field === 'description_html' && assistantFieldValues.description_html) return assistantFieldValues.description_html;
     if (field === 'title') return uploadForm?.querySelector('[data-extra-input="product_name"]')?.value || '';
     if (field === 'condition') return uploadForm?.querySelector('[data-extra-input="condition"]')?.value || '';
     if (field === 'included_items') return uploadForm?.querySelector('[data-extra-input="accessories"]')?.value || '';
@@ -228,6 +230,21 @@
     return node;
   };
 
+  const syncAssistantFieldValues = (fieldValues) => {
+    assistantFieldValues = fieldValues || assistantFieldValues;
+    const productName = uploadForm?.querySelector('[data-extra-input="product_name"]');
+    const condition = uploadForm?.querySelector('[data-extra-input="condition"]');
+    const accessories = uploadForm?.querySelector('[data-extra-input="accessories"]');
+    if (productName && assistantFieldValues.title !== undefined) productName.value = assistantFieldValues.title || '';
+    if (condition && assistantFieldValues.condition !== undefined) condition.value = assistantFieldValues.condition || '';
+    if (accessories && assistantFieldValues.included_items !== undefined) accessories.value = assistantFieldValues.included_items || '';
+    if (notesInput && assistantFieldValues.description_html !== undefined) notesInput.value = assistantFieldValues.description_html || '';
+  };
+
+  const clearAssistantActions = () => {
+    chatThread?.querySelectorAll('[data-assistant-actions]').forEach((node) => node.remove());
+  };
+
   const sendAssistantAction = async (payload) => {
     if (!currentDraftId) return;
     const response = await fetch(`/drafts/${currentDraftId}/assistant/message`, {
@@ -238,7 +255,8 @@
     if (!response.ok) return;
     const data = await response.json();
     assistantPendingField = data.pendingField || '';
-    assistantFieldValues = data.fieldValues || assistantFieldValues;
+    syncAssistantFieldValues(data.fieldValues || {});
+    clearAssistantActions();
     await renderAssistantMessages(data.messages || []);
   };
 
@@ -432,7 +450,7 @@
       currentDraftId = data.draftId;
       currentDraftLocation = data.location || `/drafts/${data.draftId}`;
       assistantPendingField = data.assistant?.pendingField || '';
-      assistantFieldValues = data.assistant?.fieldValues || {};
+      syncAssistantFieldValues(data.assistant?.fieldValues || {});
       if (data.location) {
         window.history.replaceState({}, '', data.location);
       }

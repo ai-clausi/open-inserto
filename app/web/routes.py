@@ -435,7 +435,7 @@ def _assistant_field_value(draft, field: str) -> str:
             return ""
         return "\n".join(items)
     if field == "description_html":
-        return draft.source.notes.strip()
+        return get_review_form_values(draft)["description"].strip()
     return ""
 
 
@@ -456,7 +456,7 @@ def _assistant_field_prompt(field: str) -> str:
         "title": "Ich habe einen Produktnamen erkannt. Passt der so für dein Angebot?",
         "condition": "Welchen Zustand soll ich festhalten?",
         "included_items": "Was gehört alles zum Lieferumfang?",
-        "description_html": "So würde ich den Beschreibungstext aktuell formulieren. Passt das für dich?",
+        "description_html": "So würde ich den Beschreibungstext aktuell formulieren. Passt das für dich?\n\nBeschreibungsvorschlag:",
         "category_suggestion": "Welche eBay-Kategorie passt am besten?",
     }
     if field.startswith("ebay_aspect::"):
@@ -634,13 +634,7 @@ def build_assistant_flow(draft) -> dict[str, Any]:
         value = _assistant_field_value(draft, field)
         if _assistant_value_is_placeholder(value):
             value = ""
-        label = ASSISTANT_FIELD_LABELS[field]
         if value and field in confirmed_fields:
-            messages.append({
-                "role": "assistant",
-                "text": f"{label} ist bestätigt: {value.splitlines()[0]}",
-                "tone": "confirmed",
-            })
             continue
         if value:
             value_text = value.strip() if field == "description_html" else value.splitlines()[0]
